@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Referrals — Admin{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero"><div><span class="eyebrow">GROWTH</span><h1>Referrals</h1><p>Create username-based referral codes and track link clicks, registrations and verified purchases.</p></div></div>
+  <div class="admin-grid">
+    <section class="panel">
+      <div class="panel-head"><h2>Create referral code</h2></div>
+      <form method="post" action="{{ url_for('admin.create_referral_code') }}" data-referral-code-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Username<input name="username" required placeholder="demo-learner" autocomplete="off" data-referral-username></label>
+        <label>Referral code <small>Generated automatically from the username.</small><input name="code" readonly data-referral-code placeholder="MAWIZ-DEMO-LEARNER"></label>
+        <button class="button">Create code + link</button>
+      </form>
+    </section>
+    <section class="panel"><h2>Program snapshot</h2><div class="mini-metrics"><div><b>{{ referrals|length }}</b><span>recent referral codes</span></div><div><b>{{ events|selectattr('event_type','equalto','registration')|list|length }}</b><span>registrations</span></div><div><b>{{ events|selectattr('event_type','equalto','purchase')|list|length }}</b><span>verified purchases</span></div></div></section>
+  </div>
+  <section class="panel table-panel">
+    <table class="data-table">
+      <thead><tr><th>Code / Link</th><th>Referrer</th><th>Clicks</th><th>Registrations</th><th>Purchases</th><th>Status</th><th>Created</th></tr></thead>
+      <tbody>{% for r in referrals %}{% set referral_events = events_by_referral.get(r.id, []) %}<tr><td><strong>{{ r.code }}</strong><small><a href="{{ url_for('main.referral_link', token=r.link_token, _external=True) }}">{{ url_for('main.referral_link', token=r.link_token, _external=True) }}</a></small></td><td>{{ users[r.referrer_id].username if r.referrer_id in users else '—' }}</td><td>{{ r.clicks or 0 }}</td><td>{{ referral_events|selectattr('event_type','equalto','registration')|list|length }}</td><td>{{ referral_events|selectattr('event_type','equalto','purchase')|list|length }}</td><td><span class="status status-{{ r.status }}">{{ r.status }}</span></td><td>{{ r.created_at.strftime('%Y-%m-%d') }}</td></tr>{% else %}<tr><td colspan="7" class="empty">No referral activity yet.</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}

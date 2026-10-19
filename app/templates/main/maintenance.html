@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Registration closed' if registration_closed else 'Mawiz Academy — Maintenance' }}{% endblock %}
+{% block content %}
+<section class="maintenance-page">
+  <span class="eyebrow">MAWIZ ACADEMY</span>
+  <h1>{{ 'Registration is temporarily closed' if registration_closed else 'We are making Mawiz better.' }}</h1>
+  <p>{{ 'New account creation is currently disabled by the administrator. Please check back soon.' if registration_closed else 'The Academy is temporarily unavailable while we perform system maintenance. Administrator access remains available.' }}</p>
+  {% if not registration_closed %}<a class="button" href="{{ url_for('auth.login') }}">Administrator sign in</a>{% endif %}
+</section>
+{% endblock %}

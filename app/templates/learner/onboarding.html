@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block title %}Your learner profile — Mawiz{% endblock %}
+{% block content %}
+<section class="page learner-profile-editor-page">
+  <header class="profile-editor-heading">
+    <span class="eyebrow">YOUR PROFILE</span>
+    <h1>Build your professional profile</h1>
+    <p>Showcase your goals, experience and skills. Your learner profile is publicly viewable by anyone with its link.</p>
+  </header>
+
+  <section class="panel profile-picture-card" aria-labelledby="profile-picture-heading">
+    <div class="profile-picture-preview">
+      {% if current_user.profile.profile_picture %}
+        <img class="profile-picture" src="{{ url_for('static', filename=current_user.profile.profile_picture) }}" alt="Your profile picture">
+      {% else %}
+        <div class="profile-picture profile-picture-placeholder" aria-label="No profile picture uploaded">{{ (current_user.profile.first_name[:1] if current_user.profile.first_name else current_user.username[:1])|upper }}</div>
+      {% endif %}
+    </div>
+    <div class="profile-picture-details">
+      <span class="eyebrow">PROFILE PHOTO</span>
+      <h2 id="profile-picture-heading">Make your profile recognizable</h2>
+      <p>Choose a clear JPG, PNG or WebP image. Maximum file size: 3 MB.</p>
+      <form class="profile-upload-form" method="post" action="{{ url_for('learner.upload_profile_picture') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="profile-picture-input">Select an image</label>
+        <input id="profile-picture-input" type="file" name="profile_picture" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" required>
+        <button class="button secondary" type="submit">Upload profile picture</button>
+      </form>
+    </div>
+  </section>
+
+  <form class="panel learner-profile-form" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="profile-form-section">
+      <span class="eyebrow">01 · INTRODUCTION</span>
+      <h2>Professional introduction</h2>
+      <div class="profile-form-grid">
+        <label class="profile-field profile-field-wide">Headline
+          <input name="headline" value="{{ current_user.profile.headline or '' }}" maxlength="255" placeholder="e.g. Aspiring Data Analyst">
+        </label>
+        <label class="profile-field">Location
+          <input name="location" value="{{ current_user.profile.location or '' }}" maxlength="150" placeholder="City, country">
+        </label>
+        <label class="profile-field">Career goal
+          <select name="career_goal" required><option value="">Select a goal</option>{% for goal in career_goals %}<option value="{{ goal }}" {% if current_user.profile.career_goal == goal %}selected{% endif %}>{{ goal }}</option>{% endfor %}</select>
+        </label>
+      </div>
+    </div>
+
+    <div class="profile-form-section">
+      <span class="eyebrow">02 · BACKGROUND</span>
+      <h2>Education and experience</h2>
+      <div class="profile-form-grid">
+        <label class="profile-field">Education
+          <input name="education" value="{{ current_user.profile.education or '' }}" maxlength="200" placeholder="Qualification or institution">
+        </label>
+        <label class="profile-field">Current employment
+          <input name="employment" value="{{ current_user.profile.employment or '' }}" maxlength="200" placeholder="Role, company, or self-employed">
+        </label>
+        <label class="profile-field profile-field-wide">Experience level
+          <select name="experience_level" required><option value="">Select your level</option>{% for level in experience_levels %}<option value="{{ level }}" {% if current_user.profile.experience_level == level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select>
+        </label>
+      </div>
+    </div>
+
+    <div class="profile-form-section">
+      <span class="eyebrow">03 · CAPABILITIES</span>
+      <h2>Your existing skills</h2>
+      <p class="muted">Select the skills you already have. You can update these as you progress.</p>
+      <div class="skill-grid profile-skill-grid">{% for skill in skills %}<label class="check"><input type="checkbox" name="skills" value="{{ skill.id }}" {% if skill.id in selected %}checked{% endif %}> {{ skill.name }}</label>{% else %}<p>No skills have been added yet.</p>{% endfor %}</div>
+    </div>
+    <div class="profile-form-actions"><button class="button" type="submit">Save profile</button></div>
+  </form>
+
+  {% if current_user.role == 'learner' %}
+  <section class="panel profile-share-card">
+    <div><span class="eyebrow">SHARE YOUR PROFILE</span><h2>Your public learner profile</h2><p>Share this link with employers, collaborators, and mentors. Only you see the PDF download button while signed in.</p><code>{{ url_for('main.public_learner_profile', username=current_user.username, _external=True) }}</code></div>
+    <div class="profile-share-actions"><a class="button secondary" href="{{ url_for('main.public_learner_profile', username=current_user.username) }}" target="_blank" rel="noopener">View public profile</a><a class="button" href="{{ url_for('learner.download_profile') }}">Download my profile (PDF)</a></div>
+  </section>
+  {% endif %}
+</section>
+{% endblock %}

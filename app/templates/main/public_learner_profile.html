@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}{{ learner.profile.first_name }} {{ learner.profile.last_name }} — Learner Profile{% endblock %}
+{% block og_title %}{{ learner.profile.first_name }} {{ learner.profile.last_name }} — Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page public-profile-page">
+  <div class="public-profile-hero panel">
+    {% if learner.profile.profile_picture %}
+      <img class="public-profile-photo" src="{{ url_for('static', filename=learner.profile.profile_picture) }}" alt="{{ learner.profile.first_name }} {{ learner.profile.last_name }}">
+    {% else %}
+      <div class="public-profile-photo profile-picture-placeholder">{{ (learner.profile.first_name[:1] if learner.profile.first_name else learner.username[:1])|upper }}</div>
+    {% endif %}
+    <div class="public-profile-identity">
+      <span class="eyebrow">MAWIZ LEARNER PROFILE</span>
+      <h1>{{ learner.profile.first_name }} {{ learner.profile.last_name }}</h1>
+      {% if learner.profile.headline %}<p class="profile-headline">{{ learner.profile.headline }}</p>{% endif %}
+      {% if learner.profile.location %}<p>{{ learner.profile.location }}</p>{% endif %}
+      {% if learner.profile.career_goal %}<p><strong>Career goal:</strong> {{ learner.profile.career_goal }}</p>{% endif %}
+      {% if learner.profile.experience_level %}<p><strong>Experience:</strong> {{ learner.profile.experience_level }}</p>{% endif %}
+      {% if can_download %}<a class="button" href="{{ url_for('learner.download_profile') }}">Download my profile (PDF)</a>{% endif %}
+    </div>
+  </div>
+  {% if learner.profile.education or learner.profile.employment %}
+  <section class="panel profile-section"><h2>Background</h2>
+    {% if learner.profile.education %}<p><strong>Education:</strong> {{ learner.profile.education }}</p>{% endif %}
+    {% if learner.profile.employment %}<p><strong>Current employment:</strong> {{ learner.profile.employment }}</p>{% endif %}
+  </section>{% endif %}
+  <section class="panel profile-section"><h2>Skills</h2>
+    {% if skills %}<div class="profile-skill-list">{% for row in skills %}<span class="tag">{{ row.skill.name }}{% if row.level %} · {{ row.level }}{% endif %}</span>{% endfor %}</div>
+    {% else %}<p>Skills will appear here as the learner adds them.</p>{% endif %}
+  </section>
+  <section class="panel profile-section"><h2>Portfolio</h2>
+    {% for item in portfolio_items %}
+      <article class="public-portfolio-item"><h3>{{ item.title }}</h3><p>{{ item.description }}</p>{% if item.evidence_url %}<a href="{{ item.evidence_url }}" target="_blank" rel="noopener noreferrer">View evidence →</a>{% endif %}</article>
+    {% else %}<p>Portfolio items have not been added yet.</p>{% endfor %}
+  </section>
+</section>
+{% endblock %}

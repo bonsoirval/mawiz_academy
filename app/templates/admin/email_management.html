@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Email Management — Admin{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero"><div><span class="eyebrow">COMMUNICATIONS</span><h1>Email Management</h1><p>Customize the subjects and message bodies for emails sent by Mawiz Academy.</p></div></div>
+  <form method="post" class="settings-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for key, item in templates.items() %}
+    <section class="panel">
+      <h2>{{ item.label }}</h2>
+      <label>Subject<input name="email_{{ key }}_subject" maxlength="200" required value="{{ item.subject }}"></label>
+      <label>Message body<textarea name="email_{{ key }}_body" rows="8" maxlength="12000" required>{{ item.body }}</textarea>
+      {% if key == 'verification' %}<small>Placeholders: {link} for the verification URL; {site_name} for your platform name.</small>
+      {% elif key == 'password_reset' %}<small>Placeholders: {link} for the password-reset URL; {site_name} for your platform name.</small>
+      {% elif key == 'two_factor' %}<small>Placeholders: {code} for the one-time sign-in code; {site_name} for your platform name.</small>
+      {% else %}<small>Placeholders: {first_name} for the learner's first name; {dashboard_link} for the learner dashboard URL; {site_name} for your platform name.</small>{% endif %}
+      </label>
+    </section>
+    {% endfor %}
+    <p class="muted">This page changes email wording only. SMTP server, sender address, and credentials remain in environment configuration and are not exposed in the admin interface.</p>
+    <button class="button">Save email templates</button>
+  </form>
+</section>
+{% endblock %}

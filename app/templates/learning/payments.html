@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Payment history · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page">
+  <span class="eyebrow">ACCOUNT</span><h1>Payment history</h1>
+  <p class="lead">View your course payment attempts and their current verification status. Course access is enabled only after Paystack confirms a successful payment.</p>
+  <section class="panel">
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Date</th><th>Course / purpose</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead>
+      <tbody>{% for payment in payments %}
+        <tr><td>{{ payment.created_at.strftime('%d %b %Y %H:%M') if payment.created_at else '—' }}</td>
+          <td>{{ payment.course.title if payment.course else 'Course unavailable' }}{% if payment.purpose == 'deadline_penalty' %}<small style="display:block">Deadline extension</small>{% endif %}</td>
+          <td>{{ payment.currency }} {{ '{:,.2f}'.format(payment.amount) }}</td>
+          <td><code>{{ payment.reference }}</code></td>
+          <td><span class="status status-{{ payment.status|replace('_','-') }}">{{ payment.status|replace('_',' ')|title }}</span>{% if payment.status != 'success' and payment.course %}<small style="display:block"><a href="{{ url_for('learning.course_detail', slug=payment.course.slug) }}">Return to course</a></small>{% endif %}</td>
+        </tr>
+      {% else %}<tr><td colspan="5"><div class="empty">You do not have any payment records yet.</div></td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+</section>
+{% endblock %}

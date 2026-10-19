@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Lesson {{ course_lesson_number }} — {{ lesson.title }}{% endblock %}
+{% block content %}
+<section class="page narrow lesson-page">
+  <nav class="lesson-breadcrumb" aria-label="Lesson location">
+    <a href="{{ url_for('learning.course_detail', slug=lesson.module.course.slug) }}">{{ lesson.module.course.title }}</a>
+    <span>›</span><span>Module {{ '%02d'|format(module_number) }}</span><span>›</span><span>Lesson {{ '%02d'|format(lesson_number) }}</span>
+  </nav>
+  <header class="lesson-header panel">
+    <span class="eyebrow">LESSON {{ '%02d'|format(course_lesson_number) }} OF COURSE</span>
+    <div class="lesson-number-badge">{{ '%02d'|format(lesson_number) }}</div>
+    <span class="tag">MODULE {{ '%02d'|format(module_number) }}</span>
+    <h1>{{ lesson.title }}</h1>
+    <p class="muted">{{ lesson.module.title }} · Course lesson {{ course_lesson_number }}</p>
+  </header>
+  {% if lesson.body %}<div class="lesson-body panel">{{ lesson.body }}</div>{% endif %}
+  {% if lesson.youtube_url %}<section class="panel"><div class="video-embed"><iframe src="{{ lesson.youtube_url }}" title="{{ lesson.title }} video" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div></section>{% endif %}
+  {% if quizzes %}<section class="panel"><span class="tag">CHECKPOINTS</span><h2>Quizzes</h2>{% for quiz in quizzes %}<div class="course-row"><span>{{ quiz.title }}</span><a class="button small ghost" href="{{ url_for('learning.quiz', quiz_id=quiz.id) }}">Take quiz</a></div>{% endfor %}</section>{% endif %}
+  {% if assignments %}<section class="panel"><span class="tag">PRACTICE</span><h2>Assignments</h2>{% for assignment in assignments %}<div class="course-row"><span>{{ assignment.title }}</span><a class="button small ghost" href="{{ url_for('learning.assignment', assignment_id=assignment.id) }}">Open assignment</a></div>{% endfor %}</section>{% endif %}
+  {% if current_user.role == 'learner' %}
+    {% if not lesson_complete and (pending_quizzes or pending_assignments) %}
+      <section class="panel lesson-checkpoints-pending" role="status" aria-live="polite">
+        <span class="tag">REQUIRED BEFORE COMPLETION</span>
+        <p>Complete the following checkpoints, then return here to mark this lesson complete.</p>
+        {% if pending_quizzes %}<h3>Quizzes to pass</h3><ul>{% for quiz in pending_quizzes %}<li><a href="{{ url_for('learning.quiz', quiz_id=quiz.id) }}">{{ quiz.title }}</a></li>{% endfor %}</ul>{% endif %}
+        {% if pending_assignments %}<h3>Assignments to submit</h3><ul>{% for assignment in pending_assignments %}<li><a href="{{ url_for('learning.assignment', assignment_id=assignment.id) }}">{{ assignment.title }}</a></li>{% endfor %}</ul>{% endif %}
+      </section>
+    {% endif %}
+    <form method="post" action="{{ url_for('learning.lesson', lesson_id=lesson.id) }}" class="lesson-completion-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" name="action" value="complete_lesson" class="button" {% if lesson_complete %}disabled aria-disabled="true"{% endif %}>{{ '✓ Lesson completed' if lesson_complete else 'Mark lesson complete' }}</button>
+      {% if lesson_complete %}<p class="muted small-text">Your completion has been saved.</p>{% endif %}
+    </form>
+  {% endif %}
+  <p><a class="text-link" href="{{ url_for('learning.course_detail', slug=lesson.module.course.slug) }}">← Back to course</a></p>
+</section>
+{% endblock %}

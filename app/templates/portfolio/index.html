@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}My portfolio — Mawiz{% endblock %}
+{% block content %}
+<section class="page">
+  <div class="welcome"><div><span class="eyebrow">GENERATED FROM YOUR LEARNING</span><h1>{{ portfolio_name }}’s portfolio</h1><p>Completed courses and earned skills are added automatically. Add work samples to make the story your own.</p></div><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="generate"><button class="button">Refresh portfolio</button></form></div>
+  <div class="stats journey-stats"><div><b>{{ completed_courses|length }}</b><span>completed courses</span></div><div><b>{{ acquired_skills|length }}</b><span>skills acquired</span></div><div><b>{{ items|length }}</b><span>work samples</span></div></div>
+  <div class="dashboard-grid">
+    <section class="panel"><span class="eyebrow">LEARNING RECORD</span><h2>Completed courses</h2>{% for enrollment in completed_courses %}<div class="action"><b>{{ enrollment.course.title }}</b><span>Completed {{ enrollment.completed_at.strftime('%d %b %Y') if enrollment.completed_at else 'through Mawiz Academy' }}</span></div>{% else %}<div class="empty">Completed courses will appear here automatically.</div>{% endfor %}</section>
+    <section class="panel"><span class="eyebrow">CAPABILITIES</span><h2>Skills acquired</h2>{% for entry in acquired_skills %}<div class="action"><b>{{ entry.skill.name }}</b><span>{% if entry.level %}{{ entry.level }}{% endif %}{% if entry.courses %}{% if entry.level %} · {% endif %}Earned through course: {{ entry.courses|join(', ') }}{% endif %}{% if entry.modules %} · Module: {{ entry.modules|unique|join(', ') }}{% endif %}{% if entry.lessons %} · Lesson: {{ entry.lessons|unique|join(', ') }}{% endif %}{% if entry.evidence_count %} · {{ entry.evidence_count }} evidence item{{ '' if entry.evidence_count == 1 else 's' }}{% endif %}</span></div>{% else %}<div class="empty">Skills will appear after completing a course, module or lesson configured with skills, or after receiving a verified assessment.</div>{% endfor %}</section>
+  </div>
+  <div class="dashboard-grid">
+    <section class="panel"><h2>Add work sample</h2><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Title<input name="title" required></label><label>Description<textarea name="description" rows="5" required></textarea></label><label>Evidence URL<input type="url" name="evidence_url"></label><button class="button">Add to portfolio</button></form></section>
+    <section class="panel"><h2>Your work samples</h2>{% for item in items %}<div class="action"><b>{{item.title}}</b><span>{{item.description}}</span>{% if item.evidence_url %}<a href="{{item.evidence_url}}" rel="noopener noreferrer">Open evidence →</a>{% endif %}</div>{% else %}<div class="empty">Add projects, GitHub links or other work samples to strengthen your portfolio.</div>{% endfor %}</section>
+  </div>
+</section>
+{% endblock %}

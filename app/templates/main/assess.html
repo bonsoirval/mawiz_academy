@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Find your learning track — Mawiz Academy{% endblock %}
+{% block og_title %}Find your learning track — Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page-hero assess-hero">
+  <span class="eyebrow">MAWIZ TRACK ASSESSMENT</span>
+  <h1>Not sure which path is right for you?</h1>
+  <p>Answer a few practical questions. Mawiz will recommend the published learning track that best fits your interests, goals and starting point.</p>
+</section>
+<section class="public-section assessment-shell">
+  <form method="post" class="assessment-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for q in questions %}
+    <fieldset class="assessment-question">
+      <legend><span>{{ '%02d'|format(loop.index) }}</span>{{ q.label }}</legend>
+      <div class="assessment-options">
+        {% for label, tags in q.options %}
+        <label class="assessment-option"><input type="radio" name="{{ q.id }}" value="{{ label }}" required><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+    <button class="button" type="submit">Recommend my track →</button>
+  </form>
+</section>
+{% endblock %}

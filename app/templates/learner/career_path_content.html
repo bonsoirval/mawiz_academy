@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Entrepreneurship' if path_name == 'entrepreneurship' else 'Job & Freelance' }} — Mawiz{% endblock %}
+{% block content %}
+<section class="page narrow career-content-page">
+  <a class="back-link" href="{{ url_for('learner.choose_learning_path') }}">← Back to Learning Path</a>
+  <span class="eyebrow">YOUR CAREER PATH</span>
+  <h1>{{ 'Entrepreneurship' if path_name == 'entrepreneurship' else 'Job & Freelance' }}</h1>
+  <p class="lead">{{ 'Build the capabilities to turn an idea into a sustainable business.' if path_name == 'entrepreneurship' else 'Prepare to demonstrate your skills, apply for roles and deliver work to clients.' }}</p>
+  {% for resource in resources %}
+    {% set item = resource.item %}
+    <article class="panel module" style="margin-top:16px">
+      <div class="panel-head"><div><span class="tag">{{ item.content_type|capitalize }}</span><h2>{{ item.title }}</h2></div></div>
+      {% if item.content_type == 'text' %}<div class="career-resource-text">{{ item.body|e|replace('\n', '<br>')|safe }}</div>
+      {% elif item.content_type == 'video' %}
+        {% if resource.video_embed %}<div class="video-frame"><iframe src="{{ resource.video_embed }}" title="{{ item.title }}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>{% else %}<p>Video resource: <a href="{{ item.video_url }}" target="_blank" rel="noopener noreferrer">Watch video</a></p>{% endif %}
+        {% if item.body %}<p>{{ item.body }}</p>{% endif %}
+      {% elif item.content_type == 'flashcards' %}
+        <div class="career-flashcards">{% for card in resource.cards %}<details class="panel"><summary>{{ card.front }}</summary><p>{{ card.back }}</p></details>{% endfor %}</div>
+      {% endif %}
+    </article>
+  {% else %}
+    <div class="panel empty"><h2>Learning resources are coming soon</h2><p>Your selected career path does not have published resources yet. Check back after your instructors publish content.</p></div>
+  {% endfor %}
+</section>
+<style>.career-resource-text{white-space:pre-wrap;line-height:1.75}.video-frame{position:relative;width:100%;padding-top:56.25%;overflow:hidden;border-radius:12px}.video-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}.career-flashcards{display:grid;gap:10px}.career-flashcards summary{cursor:pointer;font-weight:650;padding:8px}.career-flashcards details p{padding:0 12px 12px;white-space:pre-wrap}</style>
+{% endblock %}

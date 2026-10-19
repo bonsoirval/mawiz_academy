@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Marking & grades · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero">
+    <div><span class="eyebrow">COURSE ASSESSMENT</span><h1>Marking, scoring & grading</h1><p class="lead">Review learner assignment submissions, record marks and feedback, and inspect automatically scored quizzes.</p></div>
+    <div class="admin-hero-actions"><a class="button ghost" href="{{ url_for('admin.courses') }}">Back to courses</a></div>
+  </div>
+  <section class="panel">
+    <div class="panel-head"><div><span class="eyebrow">MANUAL MARKING</span><h2>Assignment submissions</h2></div><span class="tag">{{ submissions|length }} shown</span></div>
+    <p class="muted">Enter a score and maximum mark, then add actionable feedback. Grades are calculated as A (90–100%), B (80–89%), C (70–79%), D (60–69%), or F (below 60%).</p>
+    {% for submission in submissions %}
+      {% set assignment = assignments.get(submission.assignment_id) %}
+      <article class="panel" style="margin:14px 0;padding:16px">
+        <div class="panel-head"><div><h3>{{ assignment.title if assignment else 'Assignment' }}</h3><p class="muted">{{ learners[submission.learner_id].email if learners.get(submission.learner_id) else 'Learner' }} · Submitted {{ submission.submitted_at.strftime('%d %b %Y %H:%M') if submission.submitted_at else 'date unavailable' }}</p></div><span class="tag">{{ submission.grade or submission.status|upper }}</span></div>
+        {% if submission.response %}<div class="submission-response"><strong>Learner response</strong><p style="white-space:pre-wrap">{{ submission.response }}</p></div>{% endif %}
+        {% if submission.evidence_url %}<p><a href="{{ submission.evidence_url }}" target="_blank" rel="noopener noreferrer">Open submitted evidence ↗</a></p>{% endif %}
+        <form method="post" action="{{ url_for('admin.mark_assignment', submission_id=submission.id) }}" class="form-grid">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label>Score<input type="number" name="score" min="0" max="10000" required value="{{ submission.score if submission.score is not none else '' }}"></label>
+          <label>Maximum mark<input type="number" name="max_score" min="1" max="10000" required value="{{ submission.max_score if submission.max_score else 100 }}"></label>
+          <label class="full">Feedback<textarea name="feedback" rows="3" maxlength="5000" placeholder="Explain what was done well and what should improve.">{{ submission.feedback or '' }}</textarea></label>
+          <div class="full"><button class="button" type="submit">Save mark & grade</button>{% if submission.marked_at %}<small class="muted">Last marked {{ submission.marked_at.strftime('%d %b %Y %H:%M') }} · {{ submission.score }}/{{ submission.max_score }} · Grade {{ submission.grade }}</small>{% endif %}</div>
+        </form>
+      </article>
+    {% else %}<div class="empty">No assignment submissions yet. Learner submissions will appear here.</div>{% endfor %}
+  </section>
+  <section class="panel" style="margin-top:22px">
+    <div class="panel-head"><div><span class="eyebrow">AUTOMATIC SCORING</span><h2>Quiz results</h2></div><span class="tag">{{ quiz_attempts|length }} shown</span></div>
+    <p class="muted">Quiz scores are calculated automatically from correct answers and the quiz's configured passing score.</p>
+    <div class="table-wrap"><table><thead><tr><th>Learner</th><th>Quiz</th><th>Course</th><th>Score</th><th>Percent</th><th>Result</th><th>Completed</th></tr></thead><tbody>
+    {% for attempt in quiz_attempts %}
+      {% set quiz = quizzes.get(attempt.quiz_id) %}
+      {% set lesson = quiz.lesson if quiz else none %}
+      {% set module = lesson.module if lesson else none %}
+      <tr><td>{{ learners[attempt.learner_id].email if learners.get(attempt.learner_id) else 'Learner' }}</td><td>{{ quiz.title if quiz else 'Quiz' }}</td><td>{{ module.course.title if module and module.course else '—' }}</td><td>{{ attempt.score }}/{{ attempt.max_score }}</td><td>{{ ((attempt.score / attempt.max_score) * 100)|round|int if attempt.max_score else 0 }}%</td><td><span class="tag">{{ 'PASS' if attempt.passed else 'REVIEW' }}</span></td><td>{{ attempt.completed_at.strftime('%d %b %Y %H:%M') if attempt.completed_at else '—' }}</td></tr>
+    {% else %}<tr><td colspan="7">No quiz attempts yet.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+</section>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}Referrals — Mawiz{% endblock %}
+{% block content %}
+<section class="page">
+  <span class="eyebrow">GROWTH</span>
+  <h1>Refer a learner</h1>
+  <p class="lead">Your referral code is tied to your username. Share it freely—Mawiz tracks visits, registrations and verified course purchases.</p>
+  {% for r in referrals %}
+    {% set events = events_by_referral.get(r.id, []) %}
+    {% set registrations = events|selectattr('event_type', 'equalto', 'registration')|list %}
+    {% set purchases = events|selectattr('event_type', 'equalto', 'purchase')|list %}
+    <div class="panel referral-card">
+      <div class="panel-head">
+        <div>
+          <span class="tag">{{ r.status }}</span>
+          <h2>{{ r.code }}</h2>
+          <p class="muted">Referral link: <a href="{{ url_for('main.referral_link', token=r.link_token, _external=True) }}">{{ url_for('main.referral_link', token=r.link_token, _external=True) }}</a></p>
+        </div>
+        <strong>{{ r.clicks or 0 }} clicks</strong>
+      </div>
+      <div class="mini-metrics">
+        <div><b>{{ registrations|length }}</b><span>registrations</span></div>
+        <div><b>{{ purchases|length }}</b><span>verified purchases</span></div>
+      </div>
+      <div class="table-panel">
+        <table class="data-table">
+          <thead><tr><th>Activity</th><th>Learner</th><th>Material</th><th>Amount</th><th>Date</th></tr></thead>
+          <tbody>
+            {% for event in events %}
+              <tr>
+                <td>{{ event.event_type|capitalize }}</td>
+                <td>{{ referred[event.referred_user_id].username if event.referred_user_id in referred else 'Learner' }}</td>
+                <td>{{ event.course.title if event.course else '—' }}</td>
+                <td>{% if event.amount is not none %}{{ event.currency }} {{ '{:,.2f}'.format(event.amount) }}{% else %}—{% endif %}</td>
+                <td>{{ event.created_at.strftime('%d %b %Y %H:%M') }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="empty">No registration or purchase activity yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="panel"><h2>No referral code yet</h2><p>Your account will receive a referral code automatically.</p></div>
+  {% endfor %}
+</section>
+{% endblock %}

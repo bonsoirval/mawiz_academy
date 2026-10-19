@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}{{ site_settings.seo_title }}{% endblock %}</title>
+  <meta name="description" content="{{ site_settings.seo_description }}">
+  <meta name="keywords" content="{{ site_settings.seo_keywords }}">
+  <meta name="robots" content="{{ site_settings.seo_robots }}">
+  <meta property="og:title" content="{% block og_title %}{{ site_settings.seo_title }}{% endblock %}">
+  <meta property="og:description" content="{{ site_settings.seo_description }}">
+  <meta property="og:type" content="website">
+  {% if site_settings.canonical_base_url %}<link rel="canonical" href="{{ site_settings.canonical_base_url.rstrip('/') }}{{ request.path }}">{% endif %}
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"EducationalOrganization","name":{{ site_settings.site_name|tojson }},"description":{{ site_settings.seo_description|tojson }},"url":{{ (site_settings.canonical_base_url or request.url_root).rstrip('/')|tojson }}}</script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='paystack-course-payments-1') }}">
+</head>
+<body class="{% if current_user %}authenticated{% else %}public{% endif %}">
+{% if current_user %}
+  <div class="app-shell">
+    <aside class="sidebar" id="app-sidebar">
+      <a class="sidebar-brand" href="{{ url_for('admin.dashboard') if current_user.role == 'admin' else url_for('learner.dashboard') }}">
+        <span class="logo">M</span>
+        <span class="sidebar-brand-copy">Mawiz <b>Academy</b></span>
+      </a>
+      <div class="sidebar-user">
+        {% if current_user.profile and current_user.profile.profile_picture %}<img class="avatar avatar-image" src="{{ url_for('static', filename=current_user.profile.profile_picture) }}" alt="Profile picture">{% else %}<div class="avatar">{{ (current_user.profile.first_name[:1] if current_user.profile and current_user.profile.first_name else current_user.email[:1])|upper }}</div>{% endif %}
+        <div class="sidebar-user-copy">
+          <strong>{{ current_user.profile.first_name if current_user.profile else current_user.email }}</strong>
+          <span>{{ current_user.role|capitalize }}</span>
+        </div>
+      </div>
+      <nav class="sidebar-nav" aria-label="Application navigation">
+        {% if current_user.role == 'admin' %}
+          <a class="sidebar-link {% if request.endpoint == 'admin.dashboard' %}active{% endif %}" href="{{ url_for('admin.dashboard') }}"><span>⌂</span>Dashboard</a>
+          <div class="sidebar-section-label">MANAGEMENT</div>
+          <a class="sidebar-link {% if request.endpoint in ('admin.users','admin.user_detail','admin.update_user_permissions','admin.reset_user_permission') %}active{% endif %}" href="{{ url_for('admin.users') }}"><span>◉</span>Users</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.courses','admin.simulations','admin.career_path_content_management') %}active{% endif %}" href="{{ url_for('admin.courses') }}"><span>▣</span>Courses</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.course_marking','admin.mark_assignment') %}active{% endif %}" href="{{ url_for('admin.course_marking') }}"><span>✓</span>Marking & grades</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.assessments' %}active{% endif %}" href="{{ url_for('admin.assessments') }}"><span>✓</span>Assessments</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.submissions','admin.submission_status') %}active{% endif %}" href="{{ url_for('admin.submissions') }}"><span>✓</span>Project Review</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.permissions' %}active{% endif %}" href="{{ url_for('admin.permissions') }}"><span>◇</span>Roles & Permissions</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.activity' %}active{% endif %}" href="{{ url_for('admin.activity') }}"><span>≡</span>Audit Activity</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.system_logs' %}active{% endif %}" href="{{ url_for('admin.system_logs') }}"><span>▤</span>System Logs</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.referrals','admin.create_referral_code') %}active{% endif %}" href="{{ url_for('admin.referrals') }}"><span>↗</span>Referrals</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.coupons','admin.toggle_coupon') %}active{% endif %}" href="{{ url_for('admin.coupons') }}"><span>%</span>Coupons</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.payments' %}active{% endif %}" href="{{ url_for('admin.payments') }}"><span>₦</span>Payments</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.email_management' %}active{% endif %}" href="{{ url_for('admin.email_management') }}"><span>✉</span>Email Management</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.settings' %}active{% endif %}" href="{{ url_for('admin.settings') }}"><span>⚙</span>Settings</a>
+        {% else %}
+          <a class="sidebar-link {% if request.endpoint == 'learner.dashboard' %}active{% endif %}" href="{{ url_for('learner.dashboard') }}"><span>⌂</span>Dashboard</a>
+          {% if current_user.role != 'instructor' and can('profile.manage') %}<a class="sidebar-link {% if request.endpoint == 'learner.onboarding' %}active{% endif %}" href="{{ url_for('learner.onboarding') }}"><span>◉</span>Profile</a>{% endif %}
+          {% if current_user.role == 'learner' and can('profile.manage') %}<a class="sidebar-link {% if request.endpoint == 'learner.choose_learning_path' %}active{% endif %}" href="{{ url_for('learner.choose_learning_path') }}"><span>➜</span>Learning Path</a>{% endif %}
+          {% if current_user.role != 'instructor' and can('learning.catalog.view') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('learning.') %}active{% endif %}" href="{{ url_for('learning.courses') }}"><span>▣</span>Courses</a>{% endif %}
+          {% if current_user.role != 'instructor' and can('projects.view') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}" href="{{ url_for('projects.index') }}"><span>◆</span>Projects</a>{% endif %}
+          {% if current_user.role != 'instructor' and can('simulations.view') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('simulations.') %}active{% endif %}" href="{{ url_for('simulations.index') }}"><span>◇</span>Simulations</a>{% endif %}
+          {% if current_user.role == 'learner' and can('portfolio.manage') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('portfolio.') %}active{% endif %}" href="{{ url_for('portfolio.index') }}"><span>▤</span>Portfolio</a>{% endif %}
+          {% if current_user.role == 'learner' and can('profile.manage') %}<a class="sidebar-link {% if request.endpoint == 'learner.referrals' %}active{% endif %}" href="{{ url_for('learner.referrals') }}"><span>↗</span>Referrals</a>{% endif %}
+          {% if current_user.role == 'learner' and can('learning.catalog.view') %}<a class="sidebar-link {% if request.endpoint == 'learning.payment_history' %}active{% endif %}" href="{{ url_for('learning.payment_history') }}"><span>₦</span>Payment History</a>{% endif %}
+          {% if current_user.role == 'instructor' and can('admin.courses.manage') %}
+            <div class="sidebar-section-label">INSTRUCTOR</div>
+            <a class="sidebar-link {% if request.endpoint == 'learner.dashboard' %}active{% endif %}" href="{{ url_for('learner.dashboard') }}"><span>▦</span>Instructor dashboard</a>
+            <a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('admin.') and request.endpoint in ('admin.courses','admin.publish_course','admin.publish_track','admin.update_course_price','admin.update_course_schedule','admin.add_module','admin.add_lesson','admin.publish_assignment','admin.publish_quiz') %}active{% endif %}" href="{{ url_for('admin.courses') }}"><span>✦</span>Course management</a>
+            <a class="sidebar-link {% if request.endpoint in ('admin.course_marking','admin.mark_assignment') %}active{% endif %}" href="{{ url_for('admin.course_marking') }}"><span>✓</span>Marking & grades</a>
+          {% elif current_user.role == 'mentor' %}
+            <div class="sidebar-section-label">MENTOR</div>
+            <a class="sidebar-link {% if request.endpoint == 'learner.dashboard' %}active{% endif %}" href="{{ url_for('learner.dashboard') }}"><span>▦</span>Mentor dashboard</a>
+          {% endif %}
+        {% endif %}
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-divider"></div>
+        <a class="sidebar-link {% if request.endpoint == 'auth.change_password' %}active{% endif %}" href="{{ url_for('auth.change_password') }}"><span>⌘</span>Change password</a>
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="sidebar-link sidebar-signout" type="submit"><span>↪</span>Sign out</button>
+        </form>
+      </div>
+    </aside>
+    <div class="app-main">
+      <header class="app-topbar">
+        <button class="sidebar-toggle sidebar-toggle-visible" type="button" data-sidebar-toggle aria-label="Collapse navigation" aria-controls="app-sidebar" aria-expanded="true" title="Collapse or expand the left navigation"><span class="sidebar-toggle-icon" aria-hidden="true">☰</span><span class="sidebar-toggle-label">Menu</span></button>
+        <div class="topbar-title">Mawiz Academy</div>
+        <form class="global-search" action="{{ url_for('main.search') }}" method="get" role="search">
+          <span aria-hidden="true">⌕</span>
+          <input name="q" type="search" placeholder="Search courses, projects, skills…" value="{{ request.args.get('q','') }}" autocomplete="off">
+        </form>
+        <div class="topbar-role">{{ current_user.role|capitalize }}</div>
+      </header>
+      <main class="app-content">
+{% else %}
+  <header class="top">
+    <a class="brand" href="{{ url_for('main.home') }}"><span class="logo">M</span><span>Mawiz <b>Academy</b></span></a>
+    <nav>
+      <a class="{% if request.endpoint == 'main.home' %}nav-active{% endif %}" href="{{ url_for('main.home') }}">Home</a>
+      <a class="{% if request.endpoint in ('main.assess','main.assess_result') %}nav-active{% endif %}" href="{{ url_for('main.assess') }}">Find your track</a>
+      <a class="{% if request.endpoint in ('main.programs', 'main.program_detail') %}nav-active{% endif %}" href="{{ url_for('main.programs') }}">Programs</a>
+      <a class="{% if request.endpoint == 'main.how_it_works' %}nav-active{% endif %}" href="{{ url_for('main.how_it_works') }}">How It Works</a>
+      <a class="{% if request.endpoint == 'main.pricing' %}nav-active{% endif %}" href="{{ url_for('main.pricing') }}">Pricing</a>
+      <a class="{% if request.endpoint == 'main.about' %}nav-active{% endif %}" href="{{ url_for('main.about') }}">About</a>
+      <a href="{{ url_for('auth.login') }}">Login</a>
+      <a class="button small" href="{{ url_for('auth.register') }}">Get started</a>
+    </nav>
+  </header>
+  <main class="public-content">
+{% endif %}
+    {% with messages=get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="alerts">
+          {% for category,msg in messages %}<div class="alert {{ category }}">{{ msg }}</div>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer><span>© Mawiz Academy</span><span>Learn the skill. Experience the work. Become work-ready.</span></footer>
+  <script src="{{ url_for('static', filename='js/app.js', v='paystack-course-payments-1') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/admin-manage.js', v='manage-modal-csp-fix-1') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/sidebar.js', v='paystack-course-payments-1') }}" defer></script>
+{% if current_user %}
+    </div>
+  </div>
+{% endif %}
+</body>
+</html>

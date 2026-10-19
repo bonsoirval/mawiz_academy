@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Settings — Admin{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero"><div><span class="eyebrow">SYSTEM CONTROL</span><h1>Settings</h1><p>Control the platform, public identity, registration and search-engine defaults.</p></div></div>
+  <form method="post" class="settings-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <section class="panel"><h2>Platform</h2><div class="grid2">
+      <label>Site name<input name="site_name" value="{{ settings.site_name }}"></label>
+      <label>Site tagline<input name="site_tagline" value="{{ settings.site_tagline }}"></label>
+      <label>Registration<input type="checkbox" name="registration_enabled" value="1" {% if settings.registration_enabled == '1' %}checked{% endif %}></label>
+      <label>Email verification<input type="checkbox" name="email_verification_required" value="1" {% if settings.email_verification_required == '1' %}checked{% endif %}><small>Require new learners to verify their email before signing in.</small></label>
+      <label>Maintenance mode<input type="checkbox" name="maintenance_mode" value="1" {% if settings.maintenance_mode == '1' %}checked{% endif %}><small>When enabled, non-admin users cannot access the system.</small></label>
+    </div></section>
+    <section class="panel"><h2>Deadline penalty & access</h2><p class="muted">When a learner's registration-based course deadline expires, learning content is locked until the penalty payment is verified. Set a penalty amount and the number of days access resumes for. Use 0 days to grant the course's original duration from the payment date.</p><div class="grid2">
+      <label>Penalty amount (NGN)<input type="number" min="0" step="0.01" name="deadline_penalty_amount" value="{{ settings.deadline_penalty_amount }}" required></label>
+      <label>Extension days<input type="number" min="0" max="3650" step="1" name="deadline_penalty_extension_days" value="{{ settings.deadline_penalty_extension_days }}" required><small>0 = same duration as the course, starting from successful payment.</small></label>
+    </div></section>
+    <section class="panel"><h2>SEO</h2><div class="grid2">
+      <label>Default SEO title<input name="seo_title" value="{{ settings.seo_title }}"></label>
+      <label>Canonical base URL<input name="canonical_base_url" value="{{ settings.canonical_base_url }}" placeholder="https://academy.example.com"></label>
+      <label>SEO description<textarea name="seo_description" rows="4">{{ settings.seo_description }}</textarea></label>
+      <label>SEO keywords<textarea name="seo_keywords" rows="4">{{ settings.seo_keywords }}</textarea></label>
+      <label>Robots directive<input name="seo_robots" value="{{ settings.seo_robots }}"></label>
+    </div></section>
+    <button class="button">Save system settings</button>
+  </form>
+</section>
+{% endblock %}

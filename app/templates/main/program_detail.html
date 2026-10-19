@@ -1,0 +1,4 @@
+{% extends 'base.html' %}{% block title %}{{ course.title }} — Mawiz Academy{% endblock %}{% block content %}
+<section class="page-hero"><span class="eyebrow">{{ course.career_goal or 'MAWIZ PATHWAY' }}</span><h1>{{ course.title }}</h1><p>{{ course.description }}</p><a class="button" href="{{ url_for('auth.register') }}">Start this pathway</a></section>
+<section class="public-section"><span class="eyebrow">PATHWAY STRUCTURE</span><h2>Learn through connected modules and lessons.</h2><div class="module-list">{% for module in course.modules %}<article><span>{{ '%02d'|format(loop.index) }}</span><div><h3>{{ module.title }}</h3><p>Practical learning module with sequential lessons and checkpoints.</p><small>{{ module.lessons|length }} lesson{{ '' if module.lessons|length == 1 else 's' }}</small></div></article>{% else %}<p>This pathway is being prepared.</p>{% endfor %}</div></section>
+{% endblock %}

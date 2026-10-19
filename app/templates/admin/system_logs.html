@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}System logs · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="welcome"><div><span class="eyebrow">OPERATIONS</span><h1>System logs</h1><p class="lead">Recent application and Paystack diagnostics. Secrets, request bodies, and authorization headers are not intentionally recorded.</p></div></div>
+  <div class="panel" style="padding:1rem;margin-bottom:1rem">
+    <form method="get" class="form-grid" style="display:grid;grid-template-columns: minmax(150px,220px) minmax(180px,1fr) auto;gap:.75rem;align-items:end">
+      <label>Severity<select name="level"><option value="ALL" {% if level_filter == 'ALL' %}selected{% endif %}>All levels</option>{% for level in ['DEBUG','INFO','WARNING','ERROR','CRITICAL'] %}<option value="{{ level }}" {% if level_filter == level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select></label>
+      <label>Search logs<input type="search" name="q" value="{{ query }}" maxlength="100" placeholder="e.g. paystack_response or request_id"></label>
+      <button class="button" type="submit">Filter</button>
+    </form>
+    <p class="muted" style="margin:.75rem 0 0">Configured log file: <code>{{ log_path }}</code> · Showing up to 500 matching lines, newest first.</p>
+  </div>
+  <div class="panel table-panel"><table class="data-table"><thead><tr><th>Recent log entries</th></tr></thead><tbody>{% for entry in entries %}<tr><td><pre style="white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font: .82rem/1.5 ui-monospace,SFMono-Regular,Consolas,monospace">{{ entry.rstrip() }}</pre></td></tr>{% else %}<tr><td><div class="empty">{% if not log_exists %}No log file exists yet. It will be created when the application writes its first log entry.{% else %}No entries match the selected filters.{% endif %}</div></td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

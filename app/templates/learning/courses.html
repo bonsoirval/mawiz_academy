@@ -1,0 +1,61 @@
+{% extends 'base.html' %}{% block title %}Courses · Mawiz Academy{% endblock %}{% block content %}
+<section class="page">
+  <span class="eyebrow">MY COURSES</span>
+  <h1>{% if first_login %}Choose your first course{% else %}Courses{% endif %}</h1>
+  {% if first_login %}<p class="lead">Choose a course to begin your Learning Path. Each course deadline starts when you begin that course. Complete the required course activities to unlock the next course or stage.</p>{% else %}<p class="lead">Follow your Learning Path at your own pace. Each course has its own deadline, which starts when you begin that course. Completing all requirements unlocks the next eligible course or stage regardless of the previous course deadline.</p>{% endif %}
+  <!-- Learning Path content area intentionally left empty for future population. -->
+  <div class="learning-path-content" aria-label="Learning Path content"></div>
+  {% if active_enrollment %}
+  <div class="panel" style="border-left:4px solid #3975d5;margin-bottom:18px">
+    <span class="tag">YOUR ACTIVE COURSE</span>
+    <h2>{{ active_enrollment.course.title }}</h2>
+    <p>
+      {{ active_enrollment.progress }}% complete
+      {% if active_enrollment.started_at %}
+        · Started {{ active_enrollment.started_at.strftime('%d %b %Y') }}
+      {% else %}
+        · Start date not recorded
+      {% endif %}
+      {% if active_enrollment.deadline_at %}
+        · Target deadline {{ active_enrollment.deadline_at.strftime('%d %b %Y') }}
+        {% set active_clock = course_deadline_info.get(active_enrollment.course_id, {}) %}
+        · {% if active_clock.get('is_due_today') %}Due today{% elif active_clock.get('days_overdue', 0) > 0 %}{{ active_clock.get('days_overdue') }} day(s) overdue{% else %}{{ active_clock.get('days_remaining', 0) }} day(s) remaining{% endif %}
+      {% endif %}
+    </p>
+    <a class="button" href="{{ url_for('learning.course_detail', slug=active_enrollment.course.slug) }}">Continue course</a>
+  </div>
+  {% endif %}
+  <div class="cards" id="course-catalog">
+  {% for course in courses %}
+    {% set enrollment = enrollments_by_course.get(course.id) %}
+    {% set locked_by_active = current_user and current_user.role == 'learner' and active_enrollment and active_enrollment.course_id != course.id and (not enrollment or enrollment.progress < 100) %}
+    <article class="panel">
+      <span class="tag">{% if current_user.role == 'learner' and not stage_unlocked.get(course.id, True) %}LOCKED · PREVIOUS STAGE{% elif enrollment and enrollment.progress >= 100 %}COMPLETED{% elif enrollment %}IN PROGRESS{% elif course.price and course.price.amount > 0 %}PAID · {{ course.price.currency }} {{ '{:,.2f}'.format(course.price.amount) }}{% else %}FREE{% endif %}</span>
+      <h2>{{ course.title }}</h2>
+      <p>{{ course.description }}</p>
+      <p class="muted">Stage: {{ (course.stage or 'hard_skills')|replace('_', ' ' )|title }}</p>
+      <p class="muted">Self-paced · Estimated duration: {{ course.duration_label }} · {{ course.modules|length }} modules</p>
+      {% if current_user and current_user.role == 'learner' %}
+        {% set deadline_info = course_deadline_info.get(course.id, {}) %}
+        {% if deadline_info.get('deadline_at') %}
+          {% set remaining = deadline_info.get('days_remaining', 0) %}
+          {% set deadline_class = 'deadline-red' if deadline_info.get('is_expired') or remaining <= 0 else ('deadline-yellow' if remaining <= 7 else 'deadline-green') %}
+          <p class="deadline-countdown {{ deadline_class }}"><strong>Course deadline:</strong> {{ deadline_info.get('deadline_at').strftime('%d %b %Y') }} ·
+          {% if deadline_info.get('is_expired') %}<strong>Expired · access paused</strong>{% elif deadline_info.get('is_due_today') %}<strong>Due today</strong>{% elif deadline_info.get('days_overdue', 0) > 0 %}<strong>{{ deadline_info.get('days_overdue') }} day(s) overdue</strong>{% else %}<strong>{{ deadline_info.get('days_remaining', 0) }} day(s) left</strong>{% endif %}</p>
+        {% endif %}
+      {% endif %}
+      {% if current_user.role == 'learner' and not stage_unlocked.get(course.id, True) %}
+        <span class="button small ghost disabled" aria-disabled="true">Complete previous stage first</span>
+      {% elif enrollment and enrollment.progress >= 100 %}
+        <a class="button small ghost" href="{{ url_for('learning.course_detail', slug=course.slug) }}">Review course</a>
+      {% elif enrollment %}
+        <a class="button small" href="{{ url_for('learning.course_detail', slug=course.slug) }}">Continue course</a>
+      {% elif locked_by_active %}
+        <span class="button small ghost disabled" aria-disabled="true">Locked until current course is complete</span>
+      {% else %}
+        <a class="button small" href="{{ url_for('learning.course_detail', slug=course.slug) }}">View course</a>
+      {% endif %}
+    </article>
+  {% else %}<div class="empty">No published courses yet.</div>{% endfor %}
+  </div>
+</section>{% endblock %}

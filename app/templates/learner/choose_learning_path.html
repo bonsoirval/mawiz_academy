@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}Learning Path — Mawiz{% endblock %}
+{% block content %}
+<section class="page learning-path-page">
+  <span class="eyebrow">YOUR JOURNEY</span>
+  <h1>Learning Path</h1>
+  <p class="lead">Move from practical skills to workplace readiness, then choose the career direction that fits your goals.</p>
+
+  <div class="container learning-path-rectangles" aria-label="Four-stage Learning Path">
+    <div class="row">
+      <div class="col col-md-3">
+        <article class="learning-path-rectangle learning-path-stage is-available">
+          <div class="stage-heading"><span class="stage-number">01</span><span class="stage-icon" aria-hidden="true">◆</span></div>
+          <span class="stage-status">{{ 'COMPLETED' if hard_complete else 'FOUNDATION' }}</span>
+          <h2>Hard Skills</h2>
+          <p>Build practical technical skills through your courses.</p>
+          <div class="stage-progress-label"><span>Overall course progress</span><strong>{{ stage_progress.hard_skills }}%</strong></div>
+          <div class="stage-progress" role="progressbar" aria-label="Hard Skills progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ stage_progress.hard_skills }}"><span style="width: {{ stage_progress.hard_skills }}%"></span></div>
+          <a class="button small stage-action" href="{{ stage_course_links.hard_skills }}">{{ 'Review courses' if hard_complete else 'Continue courses' }} <span aria-hidden="true">→</span></a>
+        </article>
+      </div>
+
+      <div class="col col-md-3">
+        <article class="learning-path-rectangle learning-path-stage {{ 'is-available' if soft_unlocked else 'is-locked' }}">
+          <div class="stage-heading"><span class="stage-number">02</span><span class="stage-icon" aria-hidden="true">◇</span></div>
+          <span class="stage-status">{% if soft_complete %}COMPLETED{% elif soft_unlocked %}UNLOCKED{% else %}LOCKED{% endif %}</span>
+          <h2>Soft Skills</h2>
+          <p>Develop communication, collaboration and professional judgment.</p>
+          {% if soft_unlocked %}
+            <div class="stage-progress-label"><span>Overall course progress</span><strong>{{ stage_progress.soft_skills }}%</strong></div>
+            <div class="stage-progress" role="progressbar" aria-label="Soft Skills progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ stage_progress.soft_skills }}"><span style="width: {{ stage_progress.soft_skills }}%"></span></div>
+            <a class="button small stage-action" href="{{ stage_course_links.soft_skills }}">{{ 'Review courses' if soft_complete else 'Continue soft skills' }} <span aria-hidden="true">→</span></a>
+          {% else %}
+            <p class="stage-lock-note"><span aria-hidden="true">🔒</span> Complete all Hard Skills courses to unlock this stage.</p>
+            <span class="button small ghost disabled" aria-disabled="true">Locked</span>
+          {% endif %}
+        </article>
+      </div>
+
+      <div class="col col-md-3">
+        <article class="learning-path-rectangle learning-path-stage {{ 'is-available' if simulation_unlocked else 'is-locked' }}">
+          <div class="stage-heading"><span class="stage-number">03</span><span class="stage-icon" aria-hidden="true">▤</span></div>
+          <span class="stage-status">{% if simulation_complete %}COMPLETED{% elif simulation_unlocked %}UNLOCKED{% else %}LOCKED{% endif %}</span>
+          <h2>Work Simulation</h2>
+          <p>Apply your skills to realistic workplace scenarios.</p>
+          {% if simulation_unlocked %}
+            {% if simulation_count %}
+              <div class="stage-progress-label"><span>Simulations attempted</span><strong>{{ simulation_completed_count }}/{{ simulation_count }}</strong></div>
+              <div class="stage-progress" role="progressbar" aria-label="Work Simulation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ simulation_progress }}"><span style="width: {{ simulation_progress }}%"></span></div>
+              <a class="button small stage-action" href="{{ url_for('simulations.index') }}">{% if simulation_complete %}Review simulations{% elif simulation_completed_count %}Continue simulations{% else %}Start simulations{% endif %} <span aria-hidden="true">→</span></a>
+            {% else %}
+              <p class="stage-lock-note">Work simulations will appear here when they are published.</p>
+              <span class="button small ghost disabled" aria-disabled="true">No simulations yet</span>
+            {% endif %}
+          {% else %}
+            <p class="stage-lock-note"><span aria-hidden="true">🔒</span> Complete all Soft Skills courses to unlock simulations.</p>
+            <span class="button small ghost disabled" aria-disabled="true">Locked</span>
+          {% endif %}
+        </article>
+      </div>
+
+      <div class="col col-md-3">
+        <article class="learning-path-rectangle learning-path-stage {{ 'is-available' if career_unlocked else 'is-locked' }}">
+          <div class="stage-heading"><span class="stage-number">04</span><span class="stage-icon" aria-hidden="true">➜</span></div>
+          <span class="stage-status">{% if selected_path %}PATH SELECTED{% elif career_unlocked %}CHOOSE ONE{% else %}LOCKED{% endif %}</span>
+          <h2>Career Path</h2>
+          {% if selected_path %}
+            <p>You selected <strong>{{ 'Entrepreneurship' if selected_path == 'entrepreneurship' else 'Job & Freelance' }}</strong>. Your choice is fixed so your next steps stay focused.</p>
+            <a class="button small stage-action" href="{{ url_for('learner.career_path_content', path_name=selected_path) }}">Open {{ 'Entrepreneurship' if selected_path == 'entrepreneurship' else 'Job & Freelance' }} <span aria-hidden="true">→</span></a>
+          {% elif career_unlocked %}
+            <p>Choose one direction. Your selection cannot be switched after it is saved.</p>
+            <form method="post" class="career-path-options">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="button small stage-action" type="submit" name="career_path" value="entrepreneurship">Entrepreneurship <span aria-hidden="true">→</span></button>
+              <button class="button small ghost stage-action" type="submit" name="career_path" value="job">Job &amp; Freelance <span aria-hidden="true">→</span></button>
+            </form>
+          {% else %}
+            <p>Choose a direction after completing your learning and simulations.</p>
+            <p class="stage-lock-note"><span aria-hidden="true">🔒</span> Complete Work Simulation to unlock these choices.</p>
+            <div class="career-path-options"><span class="button small ghost disabled" aria-disabled="true">Entrepreneurship</span><span class="button small ghost disabled" aria-disabled="true">Job &amp; Freelance</span></div>
+          {% endif %}
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

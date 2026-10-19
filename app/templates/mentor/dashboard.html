@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Mentor dashboard · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero"><div><span class="eyebrow">MENTOR WORKSPACE</span><h1>Support learner progress</h1><p class="lead">Get a snapshot of learner participation and submitted practical work. Course authoring and publishing are handled by instructors and administrators.</p></div><div class="admin-hero-actions"><a class="button" href="{{ url_for('projects.index') }}">Explore projects</a><a class="button ghost" href="{{ url_for('simulations.index') }}">Workplace simulations</a></div></div>
+  <div class="stats admin-stats">
+    <div><b>{{ learner_count }}</b><span>Active learners</span><small>Across Mawiz Academy</small></div>
+    <div><b>{{ active_enrollments }}</b><span>In-progress enrollments</span><small>Progress below 100%</small></div>
+    <div><b>{{ pending_submissions }}</b><span>Pending submissions</span><small>Awaiting review</small></div>
+    <div><b>{{ projects }}</b><span>Published projects</span><small>Practice opportunities</small></div>
+    <div><b>{{ simulations }}</b><span>Published simulations</span><small>Workplace practice</small></div>
+  </div>
+  <div class="admin-grid">
+    <section class="panel"><div class="panel-head"><div><span class="eyebrow">LEARNER ROSTER</span><h2>Recently registered learners</h2></div></div>
+      {% for learner in learners %}<div class="admin-list-row"><div><strong>{{ learner.profile.first_name ~ ' ' ~ learner.profile.last_name if learner.profile else learner.email }}</strong><small>{{ learner.email }}{% if learner.profile and learner.profile.career_goal %} · Goal: {{ learner.profile.career_goal }}{% endif %}</small></div><span class="tag">LEARNER</span></div>
+      {% else %}<div class="empty">Learners will appear here as they join the academy.</div>{% endfor %}
+      <p class="muted" style="margin-top:12px">This roster is platform-wide; individual mentor-to-learner assignments are not configured yet.</p>
+    </section>
+    <section class="panel"><div class="panel-head"><div><span class="eyebrow">PRACTICAL PROGRESS</span><h2>Recent project submissions</h2></div></div>
+      {% for item in recent_submissions %}<div class="admin-list-row"><div><strong>{{ submission_learners[item.learner_id].profile.first_name ~ ' ' ~ submission_learners[item.learner_id].profile.last_name if submission_learners.get(item.learner_id) and submission_learners[item.learner_id].profile else (submission_learners[item.learner_id].email if submission_learners.get(item.learner_id) else 'Learner') }}</strong><small>Submitted {{ item.submitted_at.strftime('%d %b %Y') if item.submitted_at else 'date not recorded' }}</small></div><span class="status status-{{ item.status|replace('_','-') }}">{{ item.status|replace('_',' ')|title }}</span></div>
+      {% else %}<div class="empty">Submitted work will appear here when learners share project evidence.</div>{% endfor %}
+    </section>
+  </div>
+  <section class="panel"><div class="panel-head"><div><span class="eyebrow">MENTORING FOCUS</span><h2>Suggested support cycle</h2></div></div><div class="management-grid"><div class="management-card"><strong>Review progress</strong><span>Discuss momentum, blockers and a realistic next milestone.</span></div><div class="management-card"><strong>Practice workplace communication</strong><span>Use simulations to rehearse clarifying requirements and giving updates.</span></div><div class="management-card"><strong>Encourage evidence</strong><span>Help learners explain decisions, outcomes and lessons learned.</span></div></div></section>
+</section>
+{% endblock %}

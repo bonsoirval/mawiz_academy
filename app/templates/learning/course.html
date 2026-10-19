@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}{{ course.title }} — Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page course-detail-page">
+  <span class="eyebrow">COURSE{% if course.tracks %} · {{ course.tracks[0].title }}{% endif %}</span>
+  <div class="course-hero panel">
+    <div><h1>{{ course.title }}</h1><p class="lead">{{ course.description }}</p><p class="muted">Self-paced · Estimated duration: {{ course.duration_label }} · {{ course.modules|length }} modules</p></div>
+    {% if current_user and current_user.role == 'learner' and program_deadline_info and program_deadline_info.get('deadline_at') %}
+      {% set remaining = program_deadline_info.get('days_remaining', 0) %}
+      {% set deadline_class = 'deadline-red' if deadline_expired or remaining <= 0 else ('deadline-yellow' if remaining <= 7 else 'deadline-green') %}
+      <div class="deadline-countdown {{ deadline_class }}" role="status">
+        <span class="deadline-label">COURSE DEADLINE</span><strong class="deadline-date">{{ program_deadline_info.get('deadline_at').strftime('%d %b %Y') }}</strong>
+        {% if deadline_expired %}<strong>ACCESS LOCKED</strong><span>Your deadline has expired.</span>
+        {% elif program_deadline_info.get('is_due_today') %}<strong>Due today</strong>
+        {% elif program_deadline_info.get('days_overdue', 0) > 0 %}<strong>{{ program_deadline_info.get('days_overdue') }} day(s) overdue</strong>
+        {% else %}<strong>{{ remaining }} day(s) remaining</strong>{% endif %}
+        <small>Countdown starts when you begin this course. Completing the course unlocks the next eligible course or stage even if this deadline has passed.</small>
+      </div>
+    {% endif %}
+  </div>
+  {% if current_user.role == 'learner' and deadline_expired %}
+    <section class="deadline-lockout panel" role="alert">
+      <div class="lockout-icon">🔒</div><div><span class="eyebrow">COURSE ACCESS PAUSED</span><h2>Your deadline has passed</h2><p>To resume this course, pay the deadline penalty. Access will be restored only after Paystack confirms payment.</p>
+      <form method="post" action="{{ url_for('learning.deadline_penalty_checkout', course_id=course.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button">Pay deadline penalty and resume</button></form>
+      <p class="muted small-text">The extension period is configured by the academy administrator.</p></div>
+    </section>
+  {% elif current_user.role == 'learner' and not enrollment and active_enrollment %}
+    <div class="panel"><span class="tag">CURRENT COURSE</span><p class="muted">Complete your current course before starting another one.</p><a class="button ghost" href="{{ url_for('learning.course_detail', slug=active_enrollment.course.slug) }}">Continue current course</a></div>
+  {% elif current_user.role == 'learner' and not enrollment %}
+    <section class="panel enrollment-panel"><h2>Start learning</h2>
+      {% if course.price and course.price.amount > 0 %}<p>Payment is required before you can enroll in this course.</p><form method="post" action="{{ url_for('learning.checkout', course_id=course.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Coupon code <small>Optional — a full-value coupon grants immediate access.</small><input name="coupon_code" placeholder="WELCOME20"></label><button class="button">Pay securely with Paystack</button></form>
+      {% else %}<form method="post" action="{{ url_for('learning.enroll', course_id=course.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Coupon code <small>Optional</small><input name="coupon_code" placeholder="WELCOME20"></label><button class="button">Start free course</button></form>{% endif %}
+    </section>
+  {% elif enrollment %}<div class="course-progress-summary panel"><span class="tag">YOUR PROGRESS</span><strong>{{ enrollment.progress }}% complete</strong><div class="progress-track"><span style="width: {{ enrollment.progress }}%"></span></div></div>{% endif %}
+  {% if not deadline_expired or current_user.role != 'learner' %}
+    <div class="course-modules-grid">
+    {% for module in course.modules %}
+      <section class="panel module-card"><div class="panel-head"><div><span class="tag">MODULE {{ '%02d'|format(loop.index) }}</span><h2>{{ module.title }}</h2></div>{% if current_user.role == 'learner' %}<span class="tag">{% if module_states.get(module.id) %}COMPLETED{% elif module_open.get(module.id) %}OPEN{% else %}LOCKED{% endif %}</span>{% endif %}</div>
+      {% if current_user.role != 'learner' or module_open.get(module.id) %}<a class="button small ghost" href="{{ url_for('learning.module', module_id=module.id) }}">Open module</a>{% else %}<span class="button small ghost disabled">Complete previous module first</span>{% endif %}
+      <div class="lesson-list">{% for lesson in module.lessons %}{% set open = current_user.role != 'learner' or lesson_open.get(lesson.id) %}<a class="lesson {% if not open %}locked{% endif %}" href="{{ url_for('learning.lesson', lesson_id=lesson.id) if open else '#' }}"><span class="lesson-list-number">{{ '%02d'|format(loop.index) }}</span><span class="lesson-list-title">{{ lesson.title }}</span><span>{% if lesson_states.get(lesson.id) %}✓{% elif not open %}🔒{% else %}→{% endif %}</span></a>{% endfor %}</div></section>
+    {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

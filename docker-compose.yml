@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: mawiz
+      POSTGRES_USER: mawiz
+      POSTGRES_PASSWORD: change-this-password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  web:
+    build: .
+    environment:
+      SECRET_KEY: change-this-in-production
+      DATABASE_URL: postgresql+psycopg://mawiz:change-this-password@db:5432/mawiz
+      SESSION_COOKIE_SECURE: "false"
+      RATELIMIT_STORAGE_URI: memory://
+    depends_on:
+      - db
+    ports:
+      - "5000:5000"
+volumes:
+  postgres_data:

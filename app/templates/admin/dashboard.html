@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Admin dashboard · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero">
+    <div><span class="eyebrow">ADMIN CONSOLE</span><h1>Platform command center</h1><p class="lead">Manage people, learning content, assessments, practical work and platform activity from one place.</p></div>
+    <div class="admin-hero-actions"><a class="button" href="{{ url_for('admin.courses') }}">Manage courses</a><a class="button ghost" href="{{ url_for('admin.users') }}">Manage users</a></div>
+  </div>
+
+  <div class="stats admin-stats">
+    <div><b>{{ users }}</b><span>Total users</span><small>{{ active_users }} active</small></div>
+    <div><b>{{ learners }}</b><span>Learners</span><small>{{ instructors }} instructors · {{ mentors }} mentors</small></div>
+    <div><b>{{ courses }}</b><span>Courses</span><small>{{ published_courses }} published</small></div>
+    <div><b>{{ enrollments }}</b><span>Enrollments</span><small>Learning participation</small></div>
+    <div><b>{{ submissions }}</b><span>Submissions</span><small>{{ pending_submissions }} awaiting action</small></div>
+    <div><b>{{ assessments }}</b><span>Assessments</span><small>{{ quiz_attempts }} quiz attempts</small></div>
+    <div><b>{{ portfolio_items }}</b><span>Portfolio evidence</span><small>Published learner work</small></div>
+    <div><b>{{ published_courses }}</b><span>Live pathways</span><small>Visible in catalog</small></div>
+  </div>
+
+  <div class="admin-grid">
+    <section class="panel"><div class="panel-head"><div><span class="eyebrow">PEOPLE</span><h2>Recent users</h2></div><a href="{{ url_for('admin.users') }}" class="text-link">View all</a></div>
+      {% for user in recent_users %}<a class="admin-list-row" href="{{ url_for('admin.user_detail', user_id=user.id) }}"><div><strong>{{ user.profile.first_name ~ ' ' ~ user.profile.last_name if user.profile else user.email }}</strong><small>{{ user.email }}</small></div><span class="tag">{{ user.role|upper }}</span></a>{% else %}<div class="empty">No users yet.</div>{% endfor %}
+    </section>
+    <section class="panel"><div class="panel-head"><div><span class="eyebrow">PRACTICAL WORK</span><h2>Recent submissions</h2></div><a href="{{ url_for('admin.submissions') }}" class="text-link">Review queue</a></div>
+      {% for item in recent_submissions %}<div class="admin-list-row"><div><strong>{{ project_map[item.project_id].title if project_map.get(item.project_id) else 'Project' }}</strong><small>{{ user_map[item.learner_id].email if user_map.get(item.learner_id) else 'Learner' }}</small></div><span class="status status-{{ item.status|replace('_','-') }}">{{ item.status|replace('_',' ')|title }}</span></div>{% else %}<div class="empty">No submissions yet.</div>{% endfor %}
+    </section>
+  </div>
+
+  <div class="admin-grid">
+    <section class="panel"><div class="panel-head"><div><span class="eyebrow">OPERATIONS</span><h2>Management areas</h2></div></div>
+      <div class="management-grid">
+<a class="management-card" href="{{ url_for('admin.referrals') }}"><strong>Referrals</strong><span>Manage referral codes and learner growth.</span></a><a class="management-card" href="{{ url_for('admin.coupons') }}"><strong>Coupons</strong><span>Create offers, limits and redemption controls.</span></a>
+        <a class="management-card" href="{{ url_for('admin.payments') }}"><strong>Course payments</strong><span>Review Paystack transactions, references and payment statuses.</span></a>
+        <a class="management-card" href="{{ url_for('admin.users') }}"><strong>User management</strong><span>Roles, status, profiles and account access.</span></a>
+        <a class="management-card" href="{{ url_for('admin.courses') }}"><strong>Learning content</strong><span>Courses, modules, lessons and quizzes.</span></a>
+        <a class="management-card" href="{{ url_for('admin.assessments') }}"><strong>Assessments</strong><span>Initial assessment attempts and learner outcomes.</span></a>
+        <a class="management-card" href="{{ url_for('admin.projects') }}"><strong>Project authoring</strong><span>Create practical work and publish learner projects.</span></a>
+        <a class="management-card" href="{{ url_for('admin.simulations') }}"><strong>Simulation authoring</strong><span>Create workplace scenarios and publish them.</span></a>
+        <a class="management-card" href="{{ url_for('admin.submissions') }}"><strong>Project review</strong><span>Track submissions and request revisions.</span></a>
+        <a class="management-card" href="{{ url_for('admin.permissions') }}"><strong>Roles & permissions</strong><span>Inspect seeded grants and access model.</span></a>
+        <a class="management-card" href="{{ url_for('admin.activity') }}"><strong>Audit activity</strong><span>Review recent security and platform actions.</span></a>
+      </div>
+    </section>
+    <section class="panel"><div class="panel-head"><div><span class="eyebrow">AUDIT</span><h2>Recent activity</h2></div><a href="{{ url_for('admin.activity') }}" class="text-link">Full log</a></div>
+      {% for event in recent_audit %}<div class="activity-row"><div><strong>{{ event.action|replace('_',' ')|title }}</strong><small>{{ user_map[event.user_id].email if event.user_id and user_map.get(event.user_id) else 'System' }}</small></div><time>{{ event.created_at.strftime('%d %b %H:%M') }}</time></div>{% else %}<div class="empty">No audit activity yet.</div>{% endfor %}
+    </section>
+  </div>
+
+  <section class="panel security-panel"><div><span class="eyebrow">SECURITY</span><h2>Operational checks</h2><p class="muted">The application continues to enforce Argon2 passwords, CSRF protection, secure sessions, RBAC/PBAC and audit logging.</p></div><div class="security-actions"><code>make security-audit</code><code>make intrusion-detection</code></div></section>
+</section>
+{% endblock %}

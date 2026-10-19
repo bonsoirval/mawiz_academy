@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Mawiz Academy — Learn the skill. Experience the work. Become work-ready.{% endblock %}
+{% block content %}
+<section class="public-hero hero-aligned">
+  <div class="hero-copy">
+    <span class="eyebrow">MAWIZ ACADEMY</span>
+    <h1>Learn the skill.<br><em>Experience the work.</em><br>Become work-ready.</h1>
+    <p>Move from learning to practical capability through guided learning, real projects, workplace simulations, feedback and evidence.</p>
+    <div class="actions"><a class="button" href="{{ url_for('main.assess') }}">Find your track</a><a class="button ghost" href="{{ url_for('main.how_it_works') }}">See how it works</a></div>
+    <div class="hero-note">Learning + Practice + Workplace Simulation + Capability Evidence</div>
+  </div>
+  <div class="hero-journey vertical-journey" aria-label="Mawiz learning journey">
+    {% for n,label in [('01','Assess'),('02','Learn'),('03','Practice'),('04','Build'),('05','Simulate'),('06','Prove')] %}
+    <div class="journey-step"><b>{{ n }}</b><span>{{ label }}</span></div>
+    {% if not loop.last %}<div class="journey-line" aria-hidden="true"></div>{% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<section class="public-section split-section">
+  <div><span class="eyebrow">THE PROBLEM</span><h2>Learning something is not the same as being able to do the work.</h2></div>
+  <div><p>Many learners finish courses without enough practical work, workplace context, feedback or evidence of what they can actually perform.</p><p>Mawiz is built around the difficult bridge between <strong>“I learned it”</strong> and <strong>“I can actually work.”</strong></p></div>
+</section>
+
+<section class="public-section solution-section">
+  <span class="eyebrow">THE SOLUTION</span><h2>One connected system for becoming capable.</h2>
+  <div class="feature-grid">
+    <article><b>01</b><h3>Learning</h3><p>Structured pathways, lessons and assessments give learning direction.</p></article>
+    <article><b>02</b><h3>Practice</h3><p>Activities and assignments turn concepts into repeated practice.</p></article>
+    <article><b>03</b><h3>Work</h3><p>Projects and workplace simulations introduce realistic professional demands.</p></article>
+    <article><b>04</b><h3>Evidence</h3><p>Feedback, competency results and portfolio evidence show development.</p></article>
+  </div>
+</section>
+
+<section class="public-section">
+  <div class="section-heading"><span class="eyebrow">HOW MAWIZ ACADEMY WORKS</span><h2>Assess → Learn → Practice → Build → Simulate → Prove</h2></div>
+  <div class="process-grid">
+    {% for label,desc in [('Assess','Understand your starting point and goals.'),('Learn','Follow a focused learning pathway.'),('Practice','Apply concepts through structured activities.'),('Build','Complete meaningful practical projects.'),('Simulate','Handle realistic workplace scenarios.'),('Prove','Turn performance and feedback into evidence.')] %}
+    <div class="process-card"><span>{{ loop.index|string|length and '%02d'|format(loop.index) }}</span><h3>{{ label }}</h3><p>{{ desc }}</p></div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="public-section pathway-section">
+  <div class="section-heading"><span class="eyebrow">LEARNING PATHWAYS</span><h2>Focused pathways built around capability.</h2><a href="{{ url_for('main.programs') }}">View all programs →</a></div>
+  <div class="program-grid">
+    {% for program in programs %}
+    <article class="program-card"><span class="tag">{{ program.career_goal or 'Work-ready pathway' }}</span><h3>{{ program.title }}</h3><p>{{ program.description|truncate(150) }}</p><a href="{{ url_for('main.program_detail', course_id=program.id) }}">Explore pathway →</a></article>
+    {% else %}
+    <article class="program-card featured"><span class="tag">Coming into the pilot</span><h3>Build a work-ready capability path</h3><p>Our pathways connect learning with practical projects, workplace simulations and evidence.</p><a href="{{ url_for('auth.register') }}">Join the waitlist →</a></article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="public-section simulation-banner">
+  <div><span class="eyebrow">WORKPLACE SIMULATIONS</span><h2>Practice the moments that courses often leave out.</h2><p>Respond to managers, colleagues and clients. Handle unclear requirements, competing priorities, feedback, revisions and scope changes.</p></div>
+  <div class="simulation-list"><span>Communication</span><span>Deadlines</span><span>Teamwork</span><span>Client changes</span><span>Feedback</span></div>
+</section>
+
+<section class="public-section outcomes-section">
+  <span class="eyebrow">LEARNER OUTCOMES</span><h2>Leave with more than a certificate.</h2>
+  <div class="outcome-grid">
+    <div><strong>Skills</strong><span>Technical + professional capabilities</span></div>
+    <div><strong>Projects</strong><span>Practical work you can explain</span></div>
+    <div><strong>Workplace readiness</strong><span>Communication, teamwork, accountability and problem solving</span></div>
+    <div><strong>Evidence</strong><span>Feedback, competency results and portfolio work</span></div>
+  </div>
+</section>
+
+<section class="public-section testimonials">
+  <span class="eyebrow">TESTIMONIALS</span><h2>What learners should be able to say.</h2>
+  <div class="testimonial-grid">
+    <blockquote>“I didn't just complete lessons. I had to build, explain my decisions and respond to workplace situations.”<cite>— Pilot learner perspective</cite></blockquote>
+    <blockquote>“My portfolio finally shows evidence of what I can do, not only the courses I have taken.”<cite>— Pilot learner perspective</cite></blockquote>
+    <blockquote>“The practical feedback helped me understand where I was ready and where I still needed practice.”<cite>— Pilot learner perspective</cite></blockquote>
+  </div>
+  <p class="source-note">Pilot testimonials will be replaced with verified learner stories as the pilot progresses.</p>
+</section>
+
+<section class="public-section pricing-preview">
+  <div><span class="eyebrow">PRICING</span><h2>Built for future subscription and cohort models.</h2><p>Mawiz pricing will evolve with the pilot. The product is designed to support subscriptions and structured cohort experiences.</p></div>
+  <a class="button ghost" href="{{ url_for('main.pricing') }}">Explore pricing →</a>
+</section>
+
+<section class="public-cta">
+  <span class="eyebrow">YOUR NEXT MOVE</span><h2>Don't just learn the skill.<br>Become able to do the work.</h2>
+  <a class="button" href="{{ url_for('auth.register') }}">Start your Mawiz journey</a>
+</section>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Course payments · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero">
+    <div><span class="eyebrow">FINANCE & OPERATIONS</span><h1>Course payments</h1><p class="lead">Review payment attempts initialized through Paystack. Course access is granted only after server-side transaction verification.</p></div>
+    <div class="admin-hero-actions"><a class="button ghost" href="{{ url_for('admin.dashboard') }}">Back to dashboard</a></div>
+  </div>
+  <div class="stats admin-stats">
+    <div><b>{{ totals.count }}</b><span>Recorded transactions</span><small>All payment attempts</small></div>
+    <div><b>{{ totals.successful }}</b><span>Successful</span><small>Verified by Paystack</small></div>
+    <div><b>{{ totals.pending }}</b><span>Pending</span><small>Awaiting final status</small></div>
+  </div>
+  <section class="panel">
+    <form method="get" class="filters" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:18px">
+      <label style="flex:1;min-width:220px">Search learner, course or reference<input type="search" name="q" value="{{ search }}" placeholder="Email, course title or payment reference"></label>
+      <label>Status<select name="status"><option value="">All statuses</option>{% for value in ['pending','success','failed','abandoned','initialization_failed','verification_failed','ongoing','processing','reversed'] %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ value|replace('_',' ')|title }}</option>{% endfor %}</select></label>
+      <button class="button" type="submit">Filter</button><a class="button ghost" href="{{ url_for('admin.payments') }}">Reset</a>
+    </form>
+    <p class="muted small-text">Showing up to 250 most recent matching records.</p>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Date</th><th>Learner</th><th>Course / purpose</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for payment in payments %}
+        <tr>
+          <td>{{ payment.created_at.strftime('%d %b %Y %H:%M') if payment.created_at else '—' }}</td>
+          <td><strong>{{ payment.user.profile.first_name ~ ' ' ~ payment.user.profile.last_name if payment.user and payment.user.profile else (payment.user.email if payment.user else 'Deleted account') }}</strong><small style="display:block">{{ payment.user.email if payment.user else '' }}</small></td>
+          <td>{{ payment.course.title if payment.course else 'Deleted course' }}{% if payment.purpose == 'deadline_penalty' %}<small style="display:block">Deadline extension</small>{% endif %}</td>
+          <td>{{ payment.currency }} {{ '{:,.2f}'.format(payment.amount) }}{% if payment.discount_amount %}<small style="display:block">Discount: {{ '{:,.2f}'.format(payment.discount_amount) }}</small>{% endif %}</td>
+          <td><code>{{ payment.reference }}</code>{% if payment.paystack_transaction_id %}<small style="display:block">Transaction ID: {{ payment.paystack_transaction_id }}</small>{% endif %}</td>
+          <td><span class="status status-{{ payment.status|replace('_','-') }}">{{ payment.status|replace('_',' ')|title }}</span>{% if payment.paid_at %}<small style="display:block">Paid {{ payment.paid_at.strftime('%d %b %Y %H:%M') }}</small>{% endif %}</td>
+        </tr>
+      {% else %}<tr><td colspan="6"><div class="empty">No payment records match your filters.</div></td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</section>
+{% endblock %}

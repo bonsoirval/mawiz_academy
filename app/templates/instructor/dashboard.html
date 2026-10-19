@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Instructor dashboard · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero">
+    <div><span class="eyebrow">FACILITATOR / INSTRUCTOR WORKSPACE</span><h1>Course delivery command center</h1><p class="lead">Create and maintain learning paths, organize modules and lessons, publish course content, and monitor learner participation.</p></div>
+    <div class="admin-hero-actions"><a class="button" href="{{ url_for('admin.courses') }}">Manage courses</a><a class="button ghost" href="{{ url_for('admin.course_marking') }}">Marking & grades</a></div>
+  </div>
+  <div class="stats admin-stats">
+    <div><b>{{ course_count }}</b><span>Total courses</span><small>{{ published_courses }} published</small></div>
+    <div><b>{{ draft_courses }}</b><span>Draft courses</span><small>Ready for review</small></div>
+    <div><b>{{ module_count }}</b><span>Modules</span><small>Across all courses</small></div>
+    <div><b>{{ lesson_count }}</b><span>Lessons</span><small>Text and video content</small></div>
+    <div><b>{{ enrollment_count }}</b><span>Enrollments</span><small>{{ learner_count }} learners on platform</small></div>
+  </div>
+  <div class="admin-grid">
+    <section class="panel">
+      <div class="panel-head"><div><span class="eyebrow">LEARNING ARCHITECTURE</span><h2>Courses and content</h2></div><a class="text-link" href="{{ url_for('admin.courses') }}">Open course manager →</a></div>
+      {% for course in courses %}
+      <div class="admin-list-row"><div><strong>{{ course.title }}</strong><small>{{ course.modules|length }} modules · {{ course.duration_label }} · {{ course.tracks|map(attribute='title')|join(', ') or 'No track assigned' }}</small></div><span class="tag">{{ 'PUBLISHED' if course.published else 'DRAFT' }}</span></div>
+      {% else %}<div class="empty">No courses yet. Create the first course in course management.</div>{% endfor %}
+      <div class="management-grid" style="margin-top:16px">
+        <a class="management-card" href="{{ url_for('admin.courses') }}"><strong>Tracks, courses and modules</strong><span>Build pathways, add lessons, set durations and manage pricing.</span></a>
+        <a class="management-card" href="{{ url_for('admin.courses') }}"><strong>Lessons, quizzes and assignments</strong><span>Author text or YouTube lessons and control publishing.</span></a>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><span class="eyebrow">LEARNER ACTIVITY</span><h2>Recent enrollments</h2></div></div>
+      {% for enrollment in recent_enrollments %}
+        <div class="admin-list-row"><div><strong>{{ enrollment.course.title if enrollment.course else 'Course' }}</strong><small>{{ learner_map[enrollment.user_id].email if learner_map.get(enrollment.user_id) else 'Learner' }} · {{ enrollment.progress or 0 }}% complete</small></div><span class="tag">{{ 'COMPLETE' if enrollment.progress >= 100 else 'ACTIVE' }}</span></div>
+      {% else %}<div class="empty">Learner enrollments will appear here as students start courses.</div>{% endfor %}
+    </section>
+  </div>
+  <section class="panel"><div class="panel-head"><div><span class="eyebrow">DELIVERY WORKFLOW</span><h2>Instructor actions</h2></div></div><div class="management-grid">
+    <a class="management-card" href="{{ url_for('admin.courses') }}"><strong>1. Structure the course</strong><span>Create tracks, courses, modules and lessons.</span></a>
+    <a class="management-card" href="{{ url_for('admin.courses') }}"><strong>2. Add learning activities</strong><span>Attach quizzes and assignments to modules or lessons.</span></a>
+    <a class="management-card" href="{{ url_for('admin.course_marking') }}"><strong>3. Mark and grade work</strong><span>Score assignment submissions, add feedback and review quiz scores.</span></a>
+  </div></section>
+</section>
+{% endblock %}
