@@ -1,0 +1,4 @@
+{% extends 'base.html' %}
+{% block title %}{{ page.title }} — {{ site_settings.site_name }}{% endblock %}
+{% block og_title %}{{ page.title }} — {{ site_settings.site_name }}{% endblock %}
+{% block content %}<section class="page narrow"><span class="eyebrow">{{ site_settings.site_name }}</span><h1>{{ page.title }}</h1><div class="panel" style="white-space:pre-line;overflow-wrap:anywhere">{{ page.content }}</div></section>{% endblock %}
