@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}What Clients Say · Admin{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero">
+    <div><span class="eyebrow">PUBLIC WEBSITE</span><h1>What Clients Say</h1><p class="lead">Manage testimonials displayed on the homepage. Only published testimonials appear publicly.</p></div>
+    <button class="button" type="button" data-manage-open="create-testimonial-dialog">＋ Add testimonial</button>
+  </div>
+  <div class="panel table-panel"><table class="data-table"><thead><tr><th>Client</th><th>Testimonial</th><th>Rating</th><th>Order</th><th>Status</th><th>Action</th></tr></thead><tbody>
+    {% for item in testimonials %}
+    <tr>
+      <td><strong>{{ item.client_name }}</strong><small>{{ item.role or 'Client' }}</small></td>
+      <td>{{ item.quote|truncate(120) }}</td>
+      <td>{{ '★' * item.rating }}<small>{{ item.rating }}/5</small></td>
+      <td>{{ item.sort_order }}</td>
+      <td><span class="status {{ 'status-approved' if item.published else 'status-pending' }}">{{ 'Published' if item.published else 'Draft' }}</span></td>
+      <td><button class="button small" type="button" data-manage-open="edit-testimonial-{{ item.id }}">Manage</button></td>
+    </tr>
+    {% else %}<tr><td colspan="6"><div class="empty">No testimonials yet. Add a verified client or learner testimonial to display it on the homepage.</div></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<dialog id="create-testimonial-dialog" class="manage-dialog">
+  <form method="post" class="panel settings-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="admin-hero"><div><span class="eyebrow">TESTIMONIAL EDITOR</span><h2>Add testimonial</h2></div><button type="button" class="button small secondary" data-manage-close="create-testimonial-dialog">Close</button></div>
+    <div class="grid2"><label>Client name<input name="client_name" maxlength="160" required placeholder="Client or learner name"></label><label>Role / description<input name="role" maxlength="160" placeholder="e.g. Mawiz learner"></label></div>
+    <label>What they said<textarea name="quote" rows="5" maxlength="5000" required placeholder="Enter the client's testimonial"></textarea></label>
+    <div class="grid2"><label>Rating<select name="rating"><option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option><option value="2">2 stars</option><option value="1">1 star</option></select></label><label>Display order<input type="number" name="sort_order" min="0" max="10000" value="0"><small>Lower numbers appear first.</small></label></div>
+    <label class="inline-check"><input type="checkbox" name="published" value="1"> Publish on homepage</label>
+    <div class="actions"><button class="button">Create testimonial</button><button type="button" class="button secondary" data-manage-close="create-testimonial-dialog">Cancel</button></div>
+  </form>
+</dialog>
+
+{% for item in testimonials %}
+<dialog id="edit-testimonial-{{ item.id }}" class="manage-dialog">
+  <form method="post" action="{{ url_for('admin.edit_testimonial', testimonial_id=item.id) }}" class="panel settings-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="admin-hero"><div><span class="eyebrow">TESTIMONIAL EDITOR</span><h2>Manage testimonial</h2></div><button type="button" class="button small secondary" data-manage-close="edit-testimonial-{{ item.id }}">Close</button></div>
+    <div class="grid2"><label>Client name<input name="client_name" maxlength="160" value="{{ item.client_name }}" required></label><label>Role / description<input name="role" maxlength="160" value="{{ item.role }}"></label></div>
+    <label>What they said<textarea name="quote" rows="5" maxlength="5000" required>{{ item.quote }}</textarea></label>
+    <div class="grid2"><label>Rating<select name="rating">{% for value in range(5, 0, -1) %}<option value="{{ value }}" {% if item.rating == value %}selected{% endif %}>{{ value }} star{{ '' if value == 1 else 's' }}</option>{% endfor %}</select></label><label>Display order<input type="number" name="sort_order" min="0" max="10000" value="{{ item.sort_order }}"><small>Lower numbers appear first.</small></label></div>
+    <label class="inline-check"><input type="checkbox" name="published" value="1" {% if item.published %}checked{% endif %}> Published on homepage</label>
+    <div class="actions"><button class="button">Save changes</button><button type="button" class="button secondary" data-manage-close="edit-testimonial-{{ item.id }}">Cancel</button></div>
+  </form>
+  <form method="post" action="{{ url_for('admin.delete_testimonial', testimonial_id=item.id) }}" class="panel" onsubmit="return confirm('Delete this testimonial permanently?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button danger small">Delete testimonial</button></form>
+</dialog>
+{% endfor %}
+{% endblock %}

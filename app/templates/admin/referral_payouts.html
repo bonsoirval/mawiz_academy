@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Referral Payouts — Admin{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero"><div><span class="eyebrow">FINANCE &amp; GROWTH</span><h1>Referral payouts</h1><p class="lead">Review payout requests, verify the beneficiary details, and record completed payments.</p></div></div>
+  <section class="panel table-panel">
+    <div class="panel-head"><h2>Payout requests</h2><span class="muted">{{ payouts|length }} recent requests</span></div>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Requested</th><th>Referrer</th><th>Amount</th><th>Bank details</th><th>Status</th><th>Admin note</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for payout in payouts %}
+        <tr>
+          <td>{{ payout.requested_at.strftime('%d %b %Y %H:%M') if payout.requested_at else '—' }}</td>
+          <td><strong>{{ payout.referrer.username if payout.referrer else 'Deleted account' }}</strong><small style="display:block">{{ payout.referrer.email if payout.referrer else '' }}</small></td>
+          <td><strong>NGN {{ '{:,.2f}'.format(payout.amount) }}</strong></td>
+          <td><strong>{{ payout.bank_name }}</strong><small style="display:block">{{ payout.account_name }}</small><code>{{ payout.account_number }}</code></td>
+          <td><span class="status status-{{ payout.status }}">{{ payout.status|title }}</span>{% if payout.reviewed_at %}<small style="display:block">Reviewed {{ payout.reviewed_at.strftime('%d %b %Y') }}</small>{% endif %}</td>
+          <td>{{ payout.admin_note or '—' }}</td>
+          <td>
+            {% if payout.status in ['pending', 'approved'] %}
+              <form method="post" action="{{ url_for('admin.review_referral_payout', payout_id=payout.id) }}" style="display:grid;gap:6px;min-width:170px">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label class="sr-only" for="note-{{ payout.id }}">Admin note</label><input id="note-{{ payout.id }}" name="admin_note" maxlength="500" value="{{ payout.admin_note or '' }}" placeholder="Optional note">
+                <div class="actions" style="display:flex;gap:5px;flex-wrap:wrap">
+                  {% if payout.status == 'pending' %}<button class="button small" name="action" value="approve">Approve</button>{% endif %}
+                  <button class="button small" name="action" value="paid" {% if payout.status != 'approved' %}disabled title="Approve before marking paid"{% endif %}>Mark paid</button>
+                  <button class="button small secondary" name="action" value="reject" onclick="return confirm('Reject this payout request?')">Reject</button>
+                </div>
+              </form>
+            {% else %}<span class="muted">Closed</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}<tr><td colspan="7"><div class="empty">No referral payout requests have been submitted yet.</div></td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</section>
+{% endblock %}
