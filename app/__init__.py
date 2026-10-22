@@ -92,7 +92,7 @@ def create_app(config_class=Config):
     def begin_request_logging():
         supplied = request.headers.get("X-Request-ID", "").strip()
         # Accept only short, printable correlation IDs; otherwise create our own.
-        g.request_id = supplied[:80] if supplied and all(32 <= ord(ch) < 127 for ch in supplied) else uuid.uuid4().hex
+        g.request_id = supplied[:80] if supplied and all(ch.isalnum() or ch in "-_" for ch in supplied) else uuid.uuid4().hex
         g.request_started_at = time.monotonic()
 
     @app.after_request
