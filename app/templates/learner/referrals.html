@@ -2,47 +2,26 @@
 {% block title %}Referrals — Mawiz{% endblock %}
 {% block content %}
 <section class="page">
-  <span class="eyebrow">GROWTH</span>
-  <h1>Refer a learner</h1>
-  <p class="lead">Your referral code is tied to your username. Share it freely—Mawiz tracks visits, registrations and verified course purchases.</p>
+  <span class="eyebrow">GROWTH & EARNINGS</span><h1>Refer a learner</h1>
+  <p class="lead">Share your referral links, track registrations and paid course purchases, and request payout of your course shares.</p>
+  <div class="mini-metrics">
+    <div><b>NGN {{ '{:,.2f}'.format(earned) }}</b><span>Total earned</span></div>
+    <div><b>NGN {{ '{:,.2f}'.format(available) }}</b><span>Available for payout</span></div>
+    <div><b>{{ events|selectattr('event_type', 'equalto', 'registration')|list|length }}</b><span>Referrals registered</span></div>
+    <div><b>{{ events|selectattr('event_type', 'equalto', 'purchase')|list|length }}</b><span>Paid course purchases</span></div>
+  </div>
   {% for r in referrals %}
-    {% set events = events_by_referral.get(r.id, []) %}
-    {% set registrations = events|selectattr('event_type', 'equalto', 'registration')|list %}
-    {% set purchases = events|selectattr('event_type', 'equalto', 'purchase')|list %}
-    <div class="panel referral-card">
-      <div class="panel-head">
-        <div>
-          <span class="tag">{{ r.status }}</span>
-          <h2>{{ r.code }}</h2>
-          <p class="muted">Referral link: <a href="{{ url_for('main.referral_link', token=r.link_token, _external=True) }}">{{ url_for('main.referral_link', token=r.link_token, _external=True) }}</a></p>
-        </div>
-        <strong>{{ r.clicks or 0 }} clicks</strong>
-      </div>
-      <div class="mini-metrics">
-        <div><b>{{ registrations|length }}</b><span>registrations</span></div>
-        <div><b>{{ purchases|length }}</b><span>verified purchases</span></div>
-      </div>
-      <div class="table-panel">
-        <table class="data-table">
-          <thead><tr><th>Activity</th><th>Learner</th><th>Material</th><th>Amount</th><th>Date</th></tr></thead>
-          <tbody>
-            {% for event in events %}
-              <tr>
-                <td>{{ event.event_type|capitalize }}</td>
-                <td>{{ referred[event.referred_user_id].username if event.referred_user_id in referred else 'Learner' }}</td>
-                <td>{{ event.course.title if event.course else '—' }}</td>
-                <td>{% if event.amount is not none %}{{ event.currency }} {{ '{:,.2f}'.format(event.amount) }}{% else %}—{% endif %}</td>
-                <td>{{ event.created_at.strftime('%d %b %Y %H:%M') }}</td>
-              </tr>
-            {% else %}
-              <tr><td colspan="5" class="empty">No registration or purchase activity yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  {% else %}
-    <div class="panel"><h2>No referral code yet</h2><p>Your account will receive a referral code automatically.</p></div>
-  {% endfor %}
+    {% set referral_events = events_by_referral.get(r.id, []) %}
+    {% set registrations = referral_events|selectattr('event_type', 'equalto', 'registration')|list %}
+    {% set purchases = referral_events|selectattr('event_type', 'equalto', 'purchase')|list %}
+    <div class="panel referral-card"><div class="panel-head"><div><span class="tag">{{ r.status }}</span><h2>{{ r.code }}</h2><p class="muted">Referral link: <a href="{{ url_for('main.referral_link', token=r.link_token, _external=True) }}">{{ url_for('main.referral_link', token=r.link_token, _external=True) }}</a></p></div><strong>{{ r.clicks or 0 }} clicks</strong></div>
+      <div class="mini-metrics"><div><b>{{ registrations|length }}</b><span>Registrations</span></div><div><b>{{ purchases|length }}</b><span>Paid courses</span></div><div><b>NGN {{ '{:,.2f}'.format(purchases|sum(attribute='commission_amount')) }}</b><span>Your share from courses</span></div></div>
+      <div class="table-panel"><table class="data-table"><thead><tr><th>Activity</th><th>Referred learner</th><th>Course</th><th>Course amount</th><th>Your share</th><th>Date</th></tr></thead><tbody>
+      {% for event in referral_events %}<tr><td>{{ event.event_type|capitalize }}</td><td>{{ referred[event.referred_user_id].username if event.referred_user_id in referred else 'Learner' }}</td><td>{{ event.course.title if event.course else '—' }}</td><td>{% if event.amount is not none %}{{ event.currency or 'NGN' }} {{ '{:,.2f}'.format(event.amount) }}{% else %}—{% endif %}</td><td>{% if event.event_type == 'purchase' %}NGN {{ '{:,.2f}'.format(event.commission_amount or 0) }}{% else %}—{% endif %}</td><td>{{ event.created_at.strftime('%d %b %Y %H:%M') }}</td></tr>{% else %}<tr><td colspan="6" class="empty">No referral activity yet.</td></tr>{% endfor %}
+      </tbody></table></div></div>
+  {% else %}<div class="panel"><h2>No referral code yet</h2><p>Your account will receive a referral code automatically.</p></div>{% endfor %}
+  <div class="panel"><h2>Request a payout</h2><p class="muted">Minimum payout: <strong>NGN {{ '{:,.2f}'.format(minimum_payout) }}</strong>. Pending, approved and completed payout requests are deducted from your available balance.</p>
+  {% if referral_program_enabled %}<form method="post" class="settings-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="grid2"><label>Amount (NGN)<input type="number" name="amount" min="{{ minimum_payout }}" max="{{ available }}" step="0.01" required value="{{ available if available >= minimum_payout else '' }}"></label><label>Bank name<input name="bank_name" maxlength="120" required placeholder="e.g. Access Bank"></label><label>Account name<input name="account_name" maxlength="160" required></label><label>Account number<input name="account_number" inputmode="numeric" pattern="[0-9]{8,40}" minlength="8" maxlength="40" required></label></div><button class="button" {% if available < minimum_payout %}disabled{% endif %}>Request payout</button>{% if available < minimum_payout %}<small>You need at least NGN {{ '{:,.2f}'.format(minimum_payout) }} available before requesting payout.</small>{% endif %}</form>{% else %}<p>The referral program is temporarily disabled, so payout requests are unavailable.</p>{% endif %}</div>
+  <div class="panel"><h2>Payout history</h2><div class="table-panel"><table class="data-table"><thead><tr><th>Requested</th><th>Amount</th><th>Bank</th><th>Account</th><th>Status</th><th>Admin note</th></tr></thead><tbody>{% for payout in payouts %}<tr><td>{{ payout.requested_at.strftime('%d %b %Y') }}</td><td>NGN {{ '{:,.2f}'.format(payout.amount) }}</td><td>{{ payout.bank_name }}</td><td>{{ payout.account_name }} · ••••{{ payout.account_number[-4:] }}</td><td><span class="status status-{{ payout.status }}">{{ payout.status }}</span></td><td>{{ payout.admin_note or '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">No payout requests yet.</td></tr>{% endfor %}</tbody></table></div></div>
 </section>
 {% endblock %}

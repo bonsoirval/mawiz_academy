@@ -16,6 +16,22 @@ DEFAULTS = {
     'canonical_base_url': '',
     'deadline_penalty_amount': '5000',
     'deadline_penalty_extension_days': '0',
+    'referral_program_enabled': '1',
+    'referral_share_percent': '10',
+    'referral_minimum_payout': '5000',
+    'contact_address': '',
+    'contact_map_url': '',
+    'contact_directions_url': '',
+    'contact_whatsapp_url': '',
+    'contact_telegram_url': '',
+    'contact_facebook_url': '',
+    'contact_instagram_url': '',
+    'contact_linkedin_url': '',
+    'contact_x_url': '',
+    'contact_email': '',
+    'contact_phone': '',
+    'homepage_program_limit': '6',
+    'homepage_course_limit': '6',
 }
 
 def get_setting(key, default=None):

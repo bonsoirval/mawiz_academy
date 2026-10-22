@@ -15,7 +15,7 @@ from app.models import (
     User, Profile, Course, Module, Lesson, Quiz, QuizQuestion, Project,
     Simulation, ProjectSubmission, AssignmentSubmission, Permission, UserPermission, RolePermission,
     Enrollment, LessonProgress, QuizAttempt, AssessmentAttempt, PortfolioItem,
-    SimulationAttempt, AuditEvent, Referral, ReferralEvent, Coupon, CouponRedemption, SystemSetting, Track, TrackCourse, CoursePrice, CoursePayment, Assignment, ModuleQuiz, Skill, CareerPathContent
+    SimulationAttempt, AuditEvent, Referral, ReferralEvent, Coupon, CouponRedemption, SystemSetting, Track, TrackCourse, CoursePrice, CoursePayment, Assignment, ModuleQuiz, Skill, CareerPathContent, PageContent, ReferralPayout, ContactMessage, Testimonial
 )
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -1243,6 +1243,21 @@ def delete_quiz(quiz_id):
     return _course_management_redirect(stage)
 
 
+@admin_bp.route("/contact-messages", methods=["GET", "POST"])
+@permission_required("admin.dashboard.view", "admin")
+def contact_messages():
+    if request.method == "POST":
+        message = ContactMessage.query.get_or_404(_safe_int(request.form.get("message_id"), 0, 1))
+        action = request.form.get("action", "")
+        if action in {"new", "read", "replied", "archived"}:
+            message.status = action
+            db.session.commit()
+            flash("Contact message status updated.", "success")
+        return redirect(url_for("admin.contact_messages"))
+    messages = ContactMessage.query.order_by(ContactMessage.created_at.desc()).limit(300).all()
+    return render_template("admin/contact_messages.html", messages=messages)
+
+
 @admin_bp.route("/settings", methods=["GET", "POST"])
 @permission_required("admin.dashboard.view", "admin")
 def settings():
@@ -1256,12 +1271,52 @@ def settings():
         ("canonical_base_url", "Canonical base URL"),
         ("deadline_penalty_amount", "Deadline penalty amount (NGN)"),
         ("deadline_penalty_extension_days", "Penalty extension days (0 = original course duration)"),
+        ("referral_program_enabled", "Referral program enabled"),
+        ("referral_share_percent", "Referral share percentage"),
+        ("referral_minimum_payout", "Minimum referral payout (NGN)"),
+        ("contact_address", "Contact location/address"),
+        ("contact_map_url", "Google Maps embed URL"),
+        ("contact_directions_url", "Google Maps directions URL"),
+        ("contact_whatsapp_url", "WhatsApp URL"),
+        ("contact_telegram_url", "Telegram URL"),
+        ("contact_facebook_url", "Facebook URL"),
+        ("contact_instagram_url", "Instagram URL"),
+        ("contact_linkedin_url", "LinkedIn URL"),
+        ("contact_x_url", "X URL"),
+        ("contact_email", "Contact email"),
+        ("contact_phone", "Contact phone"),
+        ("homepage_program_limit", "Homepage programs limit (0–50)"),
+        ("homepage_course_limit", "Homepage courses limit (0–50)"),
     ]
     if request.method == "POST":
         for key, label in keys:
             value = request.form.get(key, "").strip()
-            if key in {"maintenance_mode", "registration_enabled", "email_verification_required"}:
+            if key in {"maintenance_mode", "registration_enabled", "email_verification_required", "referral_program_enabled"}:
                 value = "1" if request.form.get(key) == "1" else "0"
+            if key == "referral_share_percent":
+                try:
+                    amount = Decimal(value)
+                    if amount < 0 or amount > 100:
+                        raise InvalidOperation
+                    value = str(amount.quantize(Decimal("0.01")))
+                except (InvalidOperation, ValueError):
+                    flash("Referral share must be between 0 and 100 percent.", "error")
+                    return redirect(url_for("admin.settings"))
+            if key == "referral_minimum_payout":
+                try:
+                    amount = Decimal(value)
+                    if amount < 0:
+                        raise InvalidOperation
+                    value = str(amount.quantize(Decimal("0.01")))
+                except (InvalidOperation, ValueError):
+                    flash("Minimum referral payout must be zero or greater.", "error")
+                    return redirect(url_for("admin.settings"))
+            if key in {"homepage_program_limit", "homepage_course_limit"}:
+                try:
+                    value = str(max(0, min(50, int(value or 0))))
+                except ValueError:
+                    flash(f"{label} must be a whole number between 0 and 50.", "error")
+                    return redirect(url_for("admin.settings"))
             if key == "deadline_penalty_amount":
                 try:
                     amount = Decimal(value)
@@ -1336,6 +1391,34 @@ def referrals():
     user_ids = {x.referrer_id for x in rows} | {event.referred_user_id for event in events if event.referred_user_id}
     users = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
     return render_template("admin/referrals.html", referrals=rows, users=users, events_by_referral=events_by_referral, events=events)
+
+
+@admin_bp.route("/referral-payouts")
+@permission_required("admin.dashboard.view", "admin")
+def referral_payouts():
+    payouts = ReferralPayout.query.order_by(ReferralPayout.requested_at.desc()).limit(500).all()
+    return render_template("admin/referral_payouts.html", payouts=payouts)
+
+
+@admin_bp.route("/referral-payouts/<int:payout_id>/review", methods=["POST"])
+@permission_required("admin.dashboard.view", "admin")
+def review_referral_payout(payout_id):
+    payout = ReferralPayout.query.get_or_404(payout_id)
+    action = request.form.get("action", "").strip()
+    if payout.status not in {"pending", "approved"}:
+        flash("This payout request has already been closed.", "error")
+        return redirect(url_for("admin.referral_payouts"))
+    if action not in {"approve", "paid", "reject"}:
+        flash("Choose a valid payout action.", "error")
+        return redirect(url_for("admin.referral_payouts"))
+    payout.status = {"approve": "approved", "paid": "paid", "reject": "rejected"}[action]
+    payout.admin_note = request.form.get("admin_note", "").strip()[:500]
+    payout.reviewed_at = datetime.now(timezone.utc)
+    payout.reviewed_by_id = current_user().id
+    audit("admin.referral_payout_" + payout.status)
+    db.session.commit()
+    flash("Payout request updated.", "success")
+    return redirect(url_for("admin.referral_payouts"))
 
 
 @admin_bp.route("/referrals/create", methods=["POST"])
@@ -1421,3 +1504,107 @@ def validate_coupon():
     if mine >= coupon.per_user_limit: return {"valid": False, "message": "You have already used this coupon."}, 400
     discount = amount * float(coupon.discount_value) / 100 if coupon.discount_type == "percent" else min(amount, float(coupon.discount_value))
     return {"valid": True, "code": coupon.code, "discount": round(discount, 2), "amount_after": round(amount-discount, 2)}
+
+
+@admin_bp.route("/pages", methods=["GET", "POST"])
+@permission_required("admin.dashboard.view", "admin")
+def page_management():
+    """Create and manage public content pages."""
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()[:200]
+        slug = re.sub(r"[^a-z0-9-]+", "-", request.form.get("slug", "").strip().lower() or title.lower()).strip("-")[:220]
+        content = request.form.get("content", "").strip()
+        if not title or not slug:
+            flash("A page title and valid URL slug are required.", "error")
+        elif PageContent.query.filter_by(slug=slug).first():
+            flash("A page with that URL slug already exists.", "error")
+        else:
+            page = PageContent(title=title, slug=slug, content=content, published=request.form.get("published") == "1")
+            db.session.add(page); audit("admin.page_created"); db.session.commit()
+            flash("Page created.", "success")
+            return redirect(url_for("admin.page_management"))
+    pages = PageContent.query.order_by(PageContent.updated_at.desc()).all()
+    return render_template("admin/pages.html", pages=pages)
+
+
+@admin_bp.post("/pages/<int:page_id>/edit")
+@permission_required("admin.dashboard.view", "admin")
+def edit_page(page_id):
+    page = PageContent.query.get_or_404(page_id)
+    title = request.form.get("title", "").strip()[:200]
+    slug = re.sub(r"[^a-z0-9-]+", "-", request.form.get("slug", "").strip().lower() or title.lower()).strip("-")[:220]
+    duplicate = PageContent.query.filter(PageContent.slug == slug, PageContent.id != page.id).first() if slug else None
+    if not title or not slug or duplicate:
+        flash("Enter a title and a unique, valid URL slug.", "error")
+    else:
+        page.title, page.slug = title, slug
+        page.content = request.form.get("content", "").strip()
+        page.published = request.form.get("published") == "1"
+        audit("admin.page_updated"); db.session.commit(); flash("Page updated.", "success")
+    return redirect(url_for("admin.page_management"))
+
+
+@admin_bp.post("/pages/<int:page_id>/delete")
+@permission_required("admin.dashboard.view", "admin")
+def delete_page(page_id):
+    page = PageContent.query.get_or_404(page_id)
+    db.session.delete(page); audit("admin.page_deleted"); db.session.commit()
+    flash("Page deleted.", "success")
+    return redirect(url_for("admin.page_management"))
+
+
+@admin_bp.route("/testimonials", methods=["GET", "POST"])
+@permission_required("admin.dashboard.view", "admin")
+def testimonials():
+    """Manage testimonials shown in the public homepage section."""
+    if request.method == "POST":
+        client_name = request.form.get("client_name", "").strip()[:160]
+        role = request.form.get("role", "Learner").strip()[:160] or "Learner"
+        quote = request.form.get("quote", "").strip()[:5000]
+        rating = _safe_int(request.form.get("rating"), 5, 1, 5)
+        sort_order = _safe_int(request.form.get("sort_order"), 0, 0, 10000)
+        if not client_name or not quote:
+            flash("A client name and testimonial text are required.", "error")
+        else:
+            item = Testimonial(client_name=client_name, role=role, quote=quote, rating=rating,
+                               sort_order=sort_order, published=request.form.get("published") == "1")
+            db.session.add(item)
+            audit("admin.testimonial_created")
+            db.session.commit()
+            flash("Testimonial created.", "success")
+            return redirect(url_for("admin.testimonials"))
+    items = Testimonial.query.order_by(Testimonial.sort_order.asc(), Testimonial.created_at.desc()).all()
+    return render_template("admin/testimonials.html", testimonials=items)
+
+
+@admin_bp.post("/testimonials/<int:testimonial_id>/edit")
+@permission_required("admin.dashboard.view", "admin")
+def edit_testimonial(testimonial_id):
+    item = Testimonial.query.get_or_404(testimonial_id)
+    client_name = request.form.get("client_name", "").strip()[:160]
+    role = request.form.get("role", "Learner").strip()[:160] or "Learner"
+    quote = request.form.get("quote", "").strip()[:5000]
+    if not client_name or not quote:
+        flash("A client name and testimonial text are required.", "error")
+    else:
+        item.client_name = client_name
+        item.role = role
+        item.quote = quote
+        item.rating = _safe_int(request.form.get("rating"), 5, 1, 5)
+        item.sort_order = _safe_int(request.form.get("sort_order"), 0, 0, 10000)
+        item.published = request.form.get("published") == "1"
+        audit("admin.testimonial_updated")
+        db.session.commit()
+        flash("Testimonial updated.", "success")
+    return redirect(url_for("admin.testimonials"))
+
+
+@admin_bp.post("/testimonials/<int:testimonial_id>/delete")
+@permission_required("admin.dashboard.view", "admin")
+def delete_testimonial(testimonial_id):
+    item = Testimonial.query.get_or_404(testimonial_id)
+    db.session.delete(item)
+    audit("admin.testimonial_deleted")
+    db.session.commit()
+    flash("Testimonial deleted.", "success")
+    return redirect(url_for("admin.testimonials"))

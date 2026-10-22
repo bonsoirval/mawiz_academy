@@ -16,6 +16,28 @@
       <label>Penalty amount (NGN)<input type="number" min="0" step="0.01" name="deadline_penalty_amount" value="{{ settings.deadline_penalty_amount }}" required></label>
       <label>Extension days<input type="number" min="0" max="3650" step="1" name="deadline_penalty_extension_days" value="{{ settings.deadline_penalty_extension_days }}" required><small>0 = same duration as the course, starting from successful payment.</small></label>
     </div></section>
+    <section class="panel"><h2>Referral program & payouts</h2><p class="muted">Set the course commission paid to referrers and the minimum balance required before a payout request can be submitted.</p><div class="grid2">
+      <label>Enable referral program<input type="checkbox" name="referral_program_enabled" value="1" {% if settings.referral_program_enabled == '1' %}checked{% endif %}><small>When disabled, new referral commissions are not created and learners cannot request payouts.</small></label>
+      <label>Referrer course share (%)<input type="number" name="referral_share_percent" min="0" max="100" step="0.01" value="{{ settings.referral_share_percent }}" required><small>Percentage of a verified course payment credited to its referrer.</small></label>
+      <label>Minimum payout (NGN)<input type="number" name="referral_minimum_payout" min="0" step="0.01" value="{{ settings.referral_minimum_payout }}" required><small>Minimum available balance required for each payout request.</small></label>
+    </div></section>
+    <section class="panel"><h2>Homepage content limits</h2><p class="muted">Control how many published programs and courses appear on the public homepage. Set a limit to 0 to hide that section's listings, or up to 50 items.</p><div class="grid2">
+      <label>Programs shown on homepage<input type="number" name="homepage_program_limit" min="0" max="50" step="1" value="{{ settings.homepage_program_limit }}" required></label>
+      <label>Courses shown on homepage<input type="number" name="homepage_course_limit" min="0" max="50" step="1" value="{{ settings.homepage_course_limit }}" required></label>
+    </div></section>
+    <section class="panel"><h2>Contact page & social links</h2><p class="muted">These details appear on the public Contact page. Paste your Google Maps share link in the map field (the page will use it as the visitor link and generate an embed from your address), or paste an embed URL. Add the directions URL separately.</p><div class="grid2">
+      <label>Location / address<input name="contact_address" value="{{ settings.contact_address }}" placeholder="Street, city, country"></label>
+      <label>Contact email<input type="email" name="contact_email" value="{{ settings.contact_email }}"></label>
+      <label>Contact phone<input name="contact_phone" value="{{ settings.contact_phone }}"></label>
+      <label>Google Maps embed URL<input type="url" name="contact_map_url" value="{{ settings.contact_map_url }}" placeholder="https://www.google.com/maps/embed?..." ></label>
+      <label>Google Maps directions URL<input type="url" name="contact_directions_url" value="{{ settings.contact_directions_url }}" placeholder="https://www.google.com/maps/dir/?api=1&amp;destination=..."></label>
+      <label>WhatsApp link<input type="url" name="contact_whatsapp_url" value="{{ settings.contact_whatsapp_url }}" placeholder="https://wa.me/..."></label>
+      <label>Telegram link<input type="url" name="contact_telegram_url" value="{{ settings.contact_telegram_url }}" placeholder="https://t.me/..."></label>
+      <label>Facebook URL<input type="url" name="contact_facebook_url" value="{{ settings.contact_facebook_url }}"></label>
+      <label>Instagram URL<input type="url" name="contact_instagram_url" value="{{ settings.contact_instagram_url }}"></label>
+      <label>LinkedIn URL<input type="url" name="contact_linkedin_url" value="{{ settings.contact_linkedin_url }}"></label>
+      <label>X URL<input type="url" name="contact_x_url" value="{{ settings.contact_x_url }}"></label>
+    </div></section>
     <section class="panel"><h2>SEO</h2><div class="grid2">
       <label>Default SEO title<input name="seo_title" value="{{ settings.seo_title }}"></label>
       <label>Canonical base URL<input name="canonical_base_url" value="{{ settings.canonical_base_url }}" placeholder="https://academy.example.com"></label>

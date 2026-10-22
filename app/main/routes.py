@@ -1,7 +1,7 @@
 """Public pages, discovery, search, and referral-link entry routes."""
 
 from flask import Blueprint, render_template, request, abort, redirect, url_for, session, current_app, Response
-from app.models import User, Track, Course, Module, Project, Simulation, AuditEvent, Referral, ReferralClick, Coupon, Lesson, Quiz, Skill, LearnerSkill, PortfolioItem, Assignment, TrackRecommendationAttempt
+from app.models import User, Track, Course, Module, Project, Simulation, AuditEvent, Referral, ReferralClick, Coupon, Lesson, Quiz, Skill, LearnerSkill, PortfolioItem, Assignment, TrackRecommendationAttempt, PageContent, ContactMessage, Testimonial
 from app.extensions import db
 from app.common.settings import get_setting
 from app.common.security import current_user, audit
@@ -31,14 +31,69 @@ def legacy_public_learner_profile(username):
     return redirect(url_for("main.public_learner_profile", username=username), code=301)
 
 
+def _render_public_content(slug, fallback_template, **context):
+    """Use published CMS content to replace a core public page when its reserved slug is used."""
+    page = PageContent.query.filter_by(slug=slug, published=True).first()
+    if page:
+        return render_template("main/public_page.html", page=page)
+    return render_template(fallback_template, **context)
+
+
 @main_bp.route("/")
 def home():
-    programs = Course.query.filter_by(published=True).order_by(Course.title.asc()).limit(6).all()
-    return render_template("main/home.html", programs=programs)
+    try:
+        program_limit = max(0, min(50, int(get_setting("homepage_program_limit", "6"))))
+    except (TypeError, ValueError):
+        program_limit = 6
+    try:
+        course_limit = max(0, min(50, int(get_setting("homepage_course_limit", "6"))))
+    except (TypeError, ValueError):
+        course_limit = 6
+    tracks = Track.query.filter_by(published=True).order_by(Track.title.asc()).limit(program_limit).all() if program_limit else []
+    courses = Course.query.filter_by(published=True).order_by(Course.title.asc()).limit(course_limit).all() if course_limit else []
+    testimonials = Testimonial.query.filter_by(published=True).order_by(Testimonial.sort_order.asc(), Testimonial.created_at.desc()).all()
+    return _render_public_content("home", "main/home.html", programs=tracks, courses=courses, testimonials=testimonials)
 
 @main_bp.route("/about")
 def about():
-    return render_template("main/about.html")
+    return _render_public_content("about", "main/about.html")
+
+
+@main_bp.route("/contact", methods=["GET", "POST"])
+def contact():
+    page = PageContent.query.filter_by(slug="contact", published=True).first()
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()[:120]
+        email = request.form.get("email", "").strip()[:255]
+        subject = request.form.get("subject", "General enquiry").strip()[:200] or "General enquiry"
+        message = request.form.get("message", "").strip()[:10000]
+        if not name or not email or "@" not in email or not message:
+            from flask import flash
+            flash("Please enter your name, a valid email address, and a message.", "error")
+        else:
+            db.session.add(ContactMessage(name=name, email=email, subject=subject, message=message))
+            db.session.commit()
+            from flask import flash
+            flash("Thank you. Your message has been sent to Mawiz Academy.", "success")
+            return redirect(url_for("main.contact"))
+    return render_template("main/contact.html", page=page, contact={
+        "address": get_setting("contact_address", ""),
+        "map_url": get_setting("contact_map_url", ""),
+        "directions_url": get_setting("contact_directions_url", ""),
+        "whatsapp_url": get_setting("contact_whatsapp_url", ""),
+        "telegram_url": get_setting("contact_telegram_url", ""),
+        "facebook_url": get_setting("contact_facebook_url", ""),
+        "instagram_url": get_setting("contact_instagram_url", ""),
+        "linkedin_url": get_setting("contact_linkedin_url", ""),
+        "x_url": get_setting("contact_x_url", ""),
+        "email": get_setting("contact_email", ""),
+        "phone": get_setting("contact_phone", ""),
+        "map_link": (get_setting("contact_map_url", "") if get_setting("contact_map_url", "").startswith(("https://", "http://")) else ""),
+        # Google Maps sharing links are for navigation, not necessarily iframe URLs.
+        # Only trust an explicitly supplied Maps embed URL as the iframe source;
+        # otherwise build a safe, no-API-key map search embed from the configured address.
+        "map_embed_url": (get_setting("contact_map_url", "") if ("google.com/maps/embed" in get_setting("contact_map_url", "") or "maps.google.com/maps?" in get_setting("contact_map_url", "") and "output=embed" in get_setting("contact_map_url", "")) else "https://maps.google.com/maps?q=" + __import__("urllib.parse").parse.quote(get_setting("contact_address", "") or "12 Example Avenue, Port Harcourt, Nigeria") + "&output=embed"),
+    })
 
 @main_bp.route("/assess", methods=["GET", "POST"])
 def assess():
@@ -159,9 +214,18 @@ def assess_result():
 
 @main_bp.route("/programs")
 def programs():
-    tracks = Track.query.filter_by(published=True).order_by(Track.title.asc()).all()
-    programs = Course.query.filter_by(published=True).order_by(Course.title.asc()).all()
-    return render_template("main/programs.html", tracks=tracks, programs=programs)
+    q = request.args.get("q", "").strip()[:100]
+    tracks_query = Track.query.filter_by(published=True)
+    courses_query = Course.query.filter_by(published=True)
+    if q:
+        like = f"%{q}%"
+        tracks_query = tracks_query.filter((Track.title.ilike(like)) | (Track.description.ilike(like)))
+        courses_query = courses_query.filter((Course.title.ilike(like)) | (Course.description.ilike(like)) | (Course.career_goal.ilike(like)))
+    tracks = tracks_query.order_by(Track.title.asc()).all()
+    programs = courses_query.order_by(Course.title.asc()).all()
+    if q:
+        return render_template("main/programs.html", tracks=tracks, programs=programs, q=q)
+    return _render_public_content("programs", "main/programs.html", tracks=tracks, programs=programs, q=q)
 
 @main_bp.route("/programs/<int:course_id>")
 def program_detail(course_id):
@@ -170,11 +234,11 @@ def program_detail(course_id):
 
 @main_bp.route("/how-it-works")
 def how_it_works():
-    return render_template("main/how_it_works.html")
+    return _render_public_content("how-it-works", "main/how_it_works.html")
 
 @main_bp.route("/pricing")
 def pricing():
-    return render_template("main/pricing.html")
+    return _render_public_content("pricing", "main/pricing.html")
 
 
 
@@ -229,8 +293,9 @@ def robots():
 
 @main_bp.route("/sitemap.xml")
 def sitemap():
-    urls = [url_for("main.home", _external=True), url_for("main.about", _external=True), url_for("main.programs", _external=True), url_for("main.how_it_works", _external=True), url_for("main.pricing", _external=True)]
+    urls = [url_for("main.home", _external=True), url_for("main.about", _external=True), url_for("main.programs", _external=True), url_for("main.how_it_works", _external=True), url_for("main.pricing", _external=True), url_for("main.contact", _external=True)]
     urls.extend(url_for("main.program_detail", course_id=c.id, _external=True) for c in Course.query.filter_by(published=True).all())
+    urls.extend(url_for("main.public_page", slug=p.slug, _external=True) for p in PageContent.query.filter_by(published=True).all())
     body = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + ''.join(f'<url><loc>{u}</loc></url>' for u in urls) + '</urlset>'
     return Response(body, mimetype="application/xml")
 
@@ -261,3 +326,9 @@ def search():
             results["referrals"] = Referral.query.filter(Referral.code.ilike(like)).limit(8).all()
             results["audit"] = AuditEvent.query.filter(AuditEvent.action.ilike(like)).order_by(AuditEvent.created_at.desc()).limit(8).all()
     return render_template("main/search.html", q=q, results=results)
+
+
+@main_bp.route("/pages/<slug>")
+def public_page(slug):
+    page = PageContent.query.filter_by(slug=slug, published=True).first_or_404()
+    return render_template("main/public_page.html", page=page)

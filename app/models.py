@@ -515,6 +515,7 @@ class ReferralEvent(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey("course.id", ondelete="SET NULL"), nullable=True, index=True)
     payment_id = db.Column(db.Integer, db.ForeignKey("course_payment.id", ondelete="SET NULL"), nullable=True, unique=True)
     amount = db.Column(db.Numeric(12, 2), nullable=True)
+    commission_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     currency = db.Column(db.String(3), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     referral = db.relationship("Referral", backref=db.backref("events", cascade="all, delete-orphan"))
@@ -524,6 +525,23 @@ class ReferralEvent(db.Model):
     __table_args__ = (
         db.UniqueConstraint("referred_user_id", "event_type", name="uq_referral_event_user_type"),
     )
+
+
+class ReferralPayout(db.Model):
+    """Auditable payout request and the bank details supplied for that request."""
+    id = db.Column(db.Integer, primary_key=True)
+    referrer_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    bank_name = db.Column(db.String(120), nullable=False)
+    account_name = db.Column(db.String(160), nullable=False)
+    account_number = db.Column(db.String(40), nullable=False)
+    status = db.Column(db.String(24), nullable=False, default="pending", index=True)
+    admin_note = db.Column(db.String(500), default="")
+    requested_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    reviewed_at = db.Column(db.DateTime)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))
+    referrer = db.relationship("User", foreign_keys=[referrer_id])
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
 
 
 class Coupon(db.Model):
@@ -569,3 +587,37 @@ class SystemSetting(db.Model):
     value = db.Column(db.Text, nullable=False, default="")
     description = db.Column(db.String(255), default="")
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class PageContent(db.Model):
+    """Administrator-managed public website page content."""
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    slug = db.Column(db.String(220), unique=True, nullable=False, index=True)
+    content = db.Column(db.Text, nullable=False, default="")
+    published = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class Testimonial(db.Model):
+    """Client/learner testimonials displayed on the public website."""
+    id = db.Column(db.Integer, primary_key=True)
+    client_name = db.Column(db.String(160), nullable=False)
+    role = db.Column(db.String(160), nullable=False, default="Learner")
+    quote = db.Column(db.Text, nullable=False)
+    rating = db.Column(db.Integer, nullable=False, default=5)
+    published = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class ContactMessage(db.Model):
+    """Messages submitted by visitors through the public contact form."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    subject = db.Column(db.String(200), nullable=False, default="General enquiry")
+    message = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="new", index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)

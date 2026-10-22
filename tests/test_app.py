@@ -1,5 +1,38 @@
+import pytest
+from unittest.mock import patch
+from app import create_app
+from app.config import Config
 from app.extensions import db
-from app.models import Course, CoursePayment, CoursePrice, Enrollment, User
+from app.seed import seed
+from app.models import Course, CoursePayment, CoursePrice, Enrollment, Profile, User
+
+
+class TestConfig(Config):
+    TESTING=True
+    WTF_CSRF_ENABLED=False
+    RATELIMIT_ENABLED=False
+    SECRET_KEY="test-secret"
+    REQUIRE_EMAIL_VERIFICATION=True
+    REQUIRE_EMAIL_2FA=False
+    SQLALCHEMY_DATABASE_URI="sqlite:///:memory:"
+
+
+@pytest.fixture()
+def client():
+    app=create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        seed()
+        # Existing seeded learner is configured for course-access tests; the
+        # dedicated gating test explicitly clears this value to test first-time flow.
+        seeded_learner = User.query.filter_by(email="learner@mawiz.local").first()
+        if seeded_learner and seeded_learner.profile:
+            seeded_learner.profile.career_path = "job"
+            db.session.commit()
+    with app.test_client() as c:
+        yield c
+    with app.app_context(): db.drop_all()
+
 
 def test_home(client):
     assert client.get('/').status_code==200

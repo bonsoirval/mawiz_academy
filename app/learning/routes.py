@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, url_for
 from app.common.security import current_user, permission_required, audit
 from app.extensions import csrf, db
+from app.common.settings import get_bool, get_setting
 from app.models import (
     Course, Lesson, Module, Enrollment, LessonProgress, ModuleProgress,
     Quiz, QuizAttempt, QuizResponse, ModuleQuiz, Assignment, AssignmentSubmission,
@@ -389,7 +390,7 @@ def _record_referral_purchase(payment):
     referral = registration.referral if registration else Referral.query.filter_by(
         referred_user_id=payment.user_id
     ).first()
-    if not referral or referral.referrer_id == payment.user_id:
+    if not get_bool("referral_program_enabled", True) or not referral or referral.referrer_id == payment.user_id:
         return
     if not registration:
         registration = ReferralEvent(
@@ -401,6 +402,11 @@ def _record_referral_purchase(payment):
         db.session.add(registration)
     if ReferralEvent.query.filter_by(payment_id=payment.id).first():
         return
+    try:
+        share_percent = Decimal(get_setting("referral_share_percent", "10"))
+    except (InvalidOperation, TypeError, ValueError):
+        share_percent = Decimal("10")
+    commission = (Decimal(payment.amount) * share_percent / Decimal("100")).quantize(Decimal("0.01"))
     db.session.add(ReferralEvent(
         referral_id=referral.id,
         referred_user_id=payment.user_id,
@@ -408,6 +414,7 @@ def _record_referral_purchase(payment):
         course_id=payment.course_id,
         payment_id=payment.id,
         amount=payment.amount,
+        commission_amount=commission,
         currency=payment.currency,
     ))
     audit("referral.purchase_completed")

@@ -42,9 +42,13 @@
           <a class="sidebar-link {% if request.endpoint == 'admin.activity' %}active{% endif %}" href="{{ url_for('admin.activity') }}"><span>≡</span>Audit Activity</a>
           <a class="sidebar-link {% if request.endpoint == 'admin.system_logs' %}active{% endif %}" href="{{ url_for('admin.system_logs') }}"><span>▤</span>System Logs</a>
           <a class="sidebar-link {% if request.endpoint in ('admin.referrals','admin.create_referral_code') %}active{% endif %}" href="{{ url_for('admin.referrals') }}"><span>↗</span>Referrals</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.referral_payouts','admin.review_referral_payout') %}active{% endif %}" href="{{ url_for('admin.referral_payouts') }}"><span>₦</span>Referral Payouts</a>
           <a class="sidebar-link {% if request.endpoint in ('admin.coupons','admin.toggle_coupon') %}active{% endif %}" href="{{ url_for('admin.coupons') }}"><span>%</span>Coupons</a>
           <a class="sidebar-link {% if request.endpoint == 'admin.payments' %}active{% endif %}" href="{{ url_for('admin.payments') }}"><span>₦</span>Payments</a>
           <a class="sidebar-link {% if request.endpoint == 'admin.email_management' %}active{% endif %}" href="{{ url_for('admin.email_management') }}"><span>✉</span>Email Management</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.page_management', 'admin.edit_page', 'admin.delete_page') %}active{% endif %}" href="{{ url_for('admin.page_management') }}"><span>▤</span>Page Management</a>
+          <a class="sidebar-link {% if request.endpoint in ('admin.testimonials', 'admin.edit_testimonial', 'admin.delete_testimonial') %}active{% endif %}" href="{{ url_for('admin.testimonials') }}"><span>★</span>What Clients Say</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.contact_messages' %}active{% endif %}" href="{{ url_for('admin.contact_messages') }}"><span>✉</span>Contact Messages</a>
           <a class="sidebar-link {% if request.endpoint == 'admin.settings' %}active{% endif %}" href="{{ url_for('admin.settings') }}"><span>⚙</span>Settings</a>
         {% else %}
           <a class="sidebar-link {% if request.endpoint == 'learner.dashboard' %}active{% endif %}" href="{{ url_for('learner.dashboard') }}"><span>⌂</span>Dashboard</a>
@@ -92,11 +96,12 @@
     <a class="brand" href="{{ url_for('main.home') }}"><span class="logo">M</span><span>Mawiz <b>Academy</b></span></a>
     <nav>
       <a class="{% if request.endpoint == 'main.home' %}nav-active{% endif %}" href="{{ url_for('main.home') }}">Home</a>
-      <a class="{% if request.endpoint in ('main.assess','main.assess_result') %}nav-active{% endif %}" href="{{ url_for('main.assess') }}">Find your track</a>
+      <a class="{% if request.endpoint in ('main.assess','main.assess_result') %}nav-active{% endif %}" href="{{ url_for('main.assess') }}">Find your program</a>
       <a class="{% if request.endpoint in ('main.programs', 'main.program_detail') %}nav-active{% endif %}" href="{{ url_for('main.programs') }}">Programs</a>
       <a class="{% if request.endpoint == 'main.how_it_works' %}nav-active{% endif %}" href="{{ url_for('main.how_it_works') }}">How It Works</a>
       <a class="{% if request.endpoint == 'main.pricing' %}nav-active{% endif %}" href="{{ url_for('main.pricing') }}">Pricing</a>
       <a class="{% if request.endpoint == 'main.about' %}nav-active{% endif %}" href="{{ url_for('main.about') }}">About</a>
+      <a class="{% if request.endpoint == 'main.contact' %}nav-active{% endif %}" href="{{ url_for('main.contact') }}">Contact</a>
       <a href="{{ url_for('auth.login') }}">Login</a>
       <a class="button small" href="{{ url_for('auth.register') }}">Get started</a>
     </nav>

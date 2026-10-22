@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 from flask import current_app, send_file, abort
 from datetime import datetime, timezone
 from flask import Blueprint, flash, redirect, render_template, request, url_for
-from app.common.security import current_user, permission_required
+from app.common.security import current_user, permission_required, audit
 from app.extensions import db
 from app.models import AssessmentAttempt, AssessmentQuestion, AssessmentResponse, Course, Enrollment, LearnerSkill, PortfolioItem, Project, Simulation, Skill, User, Module, Lesson, Quiz, ProjectSubmission, SimulationAttempt, CareerPathContent
 
@@ -343,17 +343,13 @@ def assessment_result(attempt_id):
     return render_template("learner/assessment_result.html", attempt=attempt, percent=percent, level=level, recommended=recommended)
 
 
-@learner_bp.route("/referrals")
+@learner_bp.route("/referrals", methods=["GET", "POST"])
 @permission_required("profile.manage", "learner")
 def referrals():
-    """Render a learner's referral codes with their registration/purchase history.
-
-    Notes
-    -----
-    The template receives an event list keyed by referral ID so it can show an
-    auditable activity table without issuing database queries during rendering.
-    """
-    from app.models import Referral, ReferralEvent, User
+    """Referral activity, commission earnings, and payout requests."""
+    from decimal import Decimal, InvalidOperation
+    from app.models import Referral, ReferralEvent, ReferralPayout, User
+    from app.common.settings import get_setting, get_bool
     user = current_user()
     codes = Referral.query.filter_by(referrer_id=user.id).order_by(Referral.created_at.desc()).all()
     referral_ids = [referral.id for referral in codes]
@@ -361,6 +357,37 @@ def referrals():
     events_by_referral = {referral_id: [] for referral_id in referral_ids}
     for event in events:
         events_by_referral[event.referral_id].append(event)
-    referred_ids = [event.referred_user_id for event in events if event.referred_user_id]
+    referred_ids = sorted({event.referred_user_id for event in events if event.referred_user_id})
     referred = {u.id: u for u in User.query.filter(User.id.in_(referred_ids)).all()} if referred_ids else {}
-    return render_template("learner/referrals.html", referrals=codes, referred=referred, events_by_referral=events_by_referral)
+    earned = sum((Decimal(str(e.commission_amount or 0)) for e in events if e.event_type == "purchase"), Decimal("0.00"))
+    payouts = ReferralPayout.query.filter_by(referrer_id=user.id).order_by(ReferralPayout.requested_at.desc()).all()
+    committed = sum((Decimal(str(p.amount or 0)) for p in payouts if p.status in {"pending", "approved", "paid"}), Decimal("0.00"))
+    available = max(Decimal("0.00"), earned - committed)
+    minimum = Decimal(str(get_setting("referral_minimum_payout", "5000") or "5000"))
+    if request.method == "POST":
+        if not get_bool("referral_program_enabled", True):
+            flash("The referral program is currently disabled.", "error")
+            return redirect(url_for("learner.referrals"))
+        bank_name = request.form.get("bank_name", "").strip()[:120]
+        account_name = request.form.get("account_name", "").strip()[:160]
+        account_number = ''.join(ch for ch in request.form.get("account_number", "") if ch.isdigit())[:40]
+        try:
+            amount = Decimal(request.form.get("amount", "0").strip()).quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError):
+            amount = Decimal("0.00")
+        if not bank_name or not account_name or len(account_number) < 8:
+            flash("Enter a bank name, account name and valid account number.", "error")
+        elif amount < minimum:
+            flash(f"The minimum payout request is NGN {minimum:,.2f}.", "error")
+        elif amount <= 0 or amount > available:
+            flash(f"Enter an amount up to your available balance of NGN {available:,.2f}.", "error")
+        else:
+            db.session.add(ReferralPayout(referrer_id=user.id, amount=amount, bank_name=bank_name,
+                account_name=account_name, account_number=account_number, status="pending"))
+            audit("referral.payout_requested")
+            db.session.commit()
+            flash("Payout request submitted for administrator review.", "success")
+            return redirect(url_for("learner.referrals"))
+    return render_template("learner/referrals.html", referrals=codes, referred=referred,
+        events_by_referral=events_by_referral, events=events, payouts=payouts, earned=earned,
+        available=available, minimum_payout=minimum, referral_program_enabled=get_bool("referral_program_enabled", True))

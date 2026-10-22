@@ -6,7 +6,7 @@
     <span class="eyebrow">MAWIZ ACADEMY</span>
     <h1>Learn the skill.<br><em>Experience the work.</em><br>Become work-ready.</h1>
     <p>Move from learning to practical capability through guided learning, real projects, workplace simulations, feedback and evidence.</p>
-    <div class="actions"><a class="button" href="{{ url_for('main.assess') }}">Find your track</a><a class="button ghost" href="{{ url_for('main.how_it_works') }}">See how it works</a></div>
+    <div class="actions"><a class="button" href="{{ url_for('main.assess') }}">Find your program</a><a class="button ghost" href="{{ url_for('main.how_it_works') }}">See how it works</a></div>
     <div class="hero-note">Learning + Practice + Workplace Simulation + Capability Evidence</div>
   </div>
   <div class="hero-journey vertical-journey" aria-label="Mawiz learning journey">
@@ -45,11 +45,14 @@
   <div class="section-heading"><span class="eyebrow">LEARNING PATHWAYS</span><h2>Focused pathways built around capability.</h2><a href="{{ url_for('main.programs') }}">View all programs →</a></div>
   <div class="program-grid">
     {% for program in programs %}
-    <article class="program-card"><span class="tag">{{ program.career_goal or 'Work-ready pathway' }}</span><h3>{{ program.title }}</h3><p>{{ program.description|truncate(150) }}</p><a href="{{ url_for('main.program_detail', course_id=program.id) }}">Explore pathway →</a></article>
-    {% else %}
-    <article class="program-card featured"><span class="tag">Coming into the pilot</span><h3>Build a work-ready capability path</h3><p>Our pathways connect learning with practical projects, workplace simulations and evidence.</p><a href="{{ url_for('auth.register') }}">Join the waitlist →</a></article>
-    {% endfor %}
+    <article class="program-card"><span class="tag">PROGRAM</span><h3>{{ program.title }}</h3><p>{{ program.description|truncate(150) }}</p><a href="{{ url_for('main.programs') }}">Explore program →</a></article>
+    {% else %}<article class="program-card"><h3>No programs to show yet</h3><p>Published programs will appear here.</p></article>{% endfor %}
   </div>
+  <p style="margin-top:18px"><a href="{{ url_for('main.programs') }}">Browse all programs →</a></p>
+</section>
+<section class="public-section">
+  <div class="section-heading"><span class="eyebrow">FEATURED COURSES</span><h2>Courses to build practical skills.</h2><a href="{{ url_for('main.programs') }}">Browse and search courses →</a></div>
+  <div class="program-grid">{% for course in courses %}<article class="program-card"><span class="tag">{{ course.career_goal or 'Course' }}</span><h3>{{ course.title }}</h3><p>{{ course.description|truncate(150) }}</p><a href="{{ url_for('main.program_detail', course_id=course.id) }}">View course →</a></article>{% else %}<article class="program-card"><h3>No courses to show yet</h3><p>Published courses will appear here.</p></article>{% endfor %}</div>
 </section>
 
 <section class="public-section simulation-banner">
@@ -67,15 +70,20 @@
   </div>
 </section>
 
+{% if testimonials %}
 <section class="public-section testimonials">
-  <span class="eyebrow">TESTIMONIALS</span><h2>What learners should be able to say.</h2>
+  <span class="eyebrow">TESTIMONIALS</span><h2>What our clients say.</h2>
   <div class="testimonial-grid">
-    <blockquote>“I didn't just complete lessons. I had to build, explain my decisions and respond to workplace situations.”<cite>— Pilot learner perspective</cite></blockquote>
-    <blockquote>“My portfolio finally shows evidence of what I can do, not only the courses I have taken.”<cite>— Pilot learner perspective</cite></blockquote>
-    <blockquote>“The practical feedback helped me understand where I was ready and where I still needed practice.”<cite>— Pilot learner perspective</cite></blockquote>
+    {% for testimonial in testimonials %}
+    <blockquote>
+      {% if testimonial.rating %}<span class="testimonial-rating" aria-label="{{ testimonial.rating }} out of 5 stars">{% for star in range(testimonial.rating) %}★{% endfor %}</span>{% endif %}
+      “{{ testimonial.quote }}”
+      <cite>— {{ testimonial.client_name }}{% if testimonial.role %}, {{ testimonial.role }}{% endif %}</cite>
+    </blockquote>
+    {% endfor %}
   </div>
-  <p class="source-note">Pilot testimonials will be replaced with verified learner stories as the pilot progresses.</p>
 </section>
+{% endif %}
 
 <section class="public-section pricing-preview">
   <div><span class="eyebrow">PRICING</span><h2>Built for future subscription and cohort models.</h2><p>Mawiz pricing will evolve with the pilot. The product is designed to support subscriptions and structured cohort experiences.</p></div>

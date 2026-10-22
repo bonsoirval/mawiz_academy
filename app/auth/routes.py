@@ -145,7 +145,7 @@ def register():
         last = request.form.get("last_name", "").strip()
         username = request.form.get("username", "").strip().lower()
         try:
-            validate_email(email, check_deliverability=False)
+            validate_email(email)
         except EmailNotValidError:
             flash("Enter a valid email address.", "error")
             return render_template("auth/register.html", referral_code=referral_code, coupon_code=coupon_code)

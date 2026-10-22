@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Contact — {{ site_settings.site_name }}{% endblock %}
+{% block og_title %}Contact — {{ site_settings.site_name }}{% endblock %}
+{% block content %}
+<section class="page">
+  <div class="admin-hero"><div><span class="eyebrow">GET IN TOUCH</span><h1>Contact {{ site_settings.site_name }}</h1><p>{{ page.content if page and page.content else 'Have a question about our programs? Send us a message or find our location below.' }}</p></div></div>
+  <div class="grid2">
+    <section class="panel"><h2>Send us a message</h2><p>Have a question about a program, course, or partnership? We would love to hear from you.</p>
+      <form method="post" action="{{ url_for('main.contact') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Your name<input name="name" maxlength="120" required autocomplete="name" value="{{ request.form.get('name','') }}"></label>
+        <label>Email address<input type="email" name="email" maxlength="255" required autocomplete="email" value="{{ request.form.get('email','') }}"></label>
+        <label>Subject<input name="subject" maxlength="200" value="{{ request.form.get('subject','') }}" placeholder="How can we help?"></label>
+        <label>Message<textarea name="message" rows="6" maxlength="10000" required placeholder="Write your message here...">{{ request.form.get('message','') }}</textarea></label>
+        <button class="button" type="submit">Send message</button>
+      </form>
+    </section>
+    <section class="panel"><h2>Our location</h2>
+      <p><strong>Address</strong><br>{{ contact.address or 'Sample Office, 12 Example Avenue, Port Harcourt, Rivers State, Nigeria (replace with your real address)' }}</p>
+      <p><strong>Phone</strong><br><a href="tel:{{ contact.phone or '+2348000000000' }}">{{ contact.phone or '+234 800 000 0000 (sample number)' }}</a></p>
+      <p><strong>Email</strong><br><a href="mailto:{{ contact.email or 'hello@example.com' }}">{{ contact.email or 'hello@example.com (sample email)' }}</a></p>
+      <p><a class="button" href="{{ contact.directions_url or ('https://www.google.com/maps/dir/?api=1&destination=' ~ (contact.address or '12 Example Avenue, Port Harcourt, Nigeria')|urlencode) }}" target="_blank" rel="noopener noreferrer">Get directions ↗</a></p>
+      <h3>Connect with us</h3><div class="actions" style="flex-wrap:wrap">
+      <a class="button" href="{{ contact.whatsapp_url or 'https://wa.me/2348000000000' }}" target="_blank" rel="noopener noreferrer">WhatsApp ↗</a>
+      <a class="button" href="{{ contact.telegram_url or 'https://t.me/mawizacademy' }}" target="_blank" rel="noopener noreferrer">Telegram ↗</a>
+      <a class="button secondary" href="{{ contact.facebook_url or 'https://facebook.com/example' }}" target="_blank" rel="noopener noreferrer">Facebook ↗</a>
+      <a class="button secondary" href="{{ contact.instagram_url or 'https://instagram.com/example' }}" target="_blank" rel="noopener noreferrer">Instagram ↗</a>
+      <a class="button secondary" href="{{ contact.linkedin_url or 'https://linkedin.com/company/example' }}" target="_blank" rel="noopener noreferrer">LinkedIn ↗</a>
+      <a class="button secondary" href="{{ contact.x_url or 'https://x.com/example' }}" target="_blank" rel="noopener noreferrer">X ↗</a>
+      </div>
+    </section>
+  </div>
+  <section class="panel" style="margin-top:24px"><h2>Find us on Google Maps</h2><p>Use the map to view our location and plan your visit. The address and map links shown here are sample values until you configure your real details in Admin Settings.</p><div style="aspect-ratio:16/9;min-height:280px"><iframe src="{{ contact.map_embed_url }}" title="Mawiz Academy location on Google Maps" width="100%" height="100%" style="border:0;border-radius:12px" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe></div><p><a href="{{ contact.map_link if contact.map_link else 'https://www.google.com/maps/search/?api=1&query=' ~ ('12 Example Avenue, Port Harcourt, Nigeria'|urlencode) }}" target="_blank" rel="noopener noreferrer">Open location in Google Maps ↗</a></p></section>
+</section>
+{% endblock %}

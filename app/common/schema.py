@@ -124,6 +124,11 @@ def ensure_schema():
         if 'marked_by_id' not in columns:
             db.session.execute(text('ALTER TABLE assignment_submission ADD COLUMN marked_by_id INTEGER REFERENCES "user"(id) ON DELETE SET NULL'))
         db.session.commit()
+    if 'referral_event' in tables:
+        columns = {c['name'] for c in inspector.get_columns('referral_event')}
+        if 'commission_amount' not in columns:
+            db.session.execute(text('ALTER TABLE referral_event ADD COLUMN commission_amount NUMERIC(12, 2) NOT NULL DEFAULT 0'))
+        db.session.commit()
     if 'referral' in tables:
         columns = {c['name'] for c in inspector.get_columns('referral')}
         if 'link_token' not in columns:
@@ -134,6 +139,21 @@ def ensure_schema():
             db.session.execute(text('ALTER TABLE referral ADD COLUMN last_clicked_at TIMESTAMP'))
         db.session.commit()
     db.create_all()
+    # Seed the built-in public pages into the CMS as drafts so admins can edit
+    # the existing page copy without unexpectedly replacing the live templates.
+    from app.models import PageContent
+    builtin_pages = {
+        "home": ("Home", "Welcome to Mawiz Academy\n\nLearn practical skills, experience realistic work, and build evidence of your capabilities."),
+        "about": ("About Mawiz", "Mawiz Academy helps learners develop practical skills, experience work, and prove their capability."),
+        "programs": ("Programs", "Explore learning programs and courses designed to build practical, job-ready skills."),
+        "how-it-works": ("How It Works", "Learn the skills, practice through realistic work and projects, and build a portfolio that demonstrates your capability."),
+        "pricing": ("Pricing", "Explore course pricing and choose the learning opportunities that fit your goals."),
+        "contact": ("Contact", "Get in touch with Mawiz Academy. Find our location, directions, and social channels."),
+    }
+    for slug, (title, content) in builtin_pages.items():
+        if not PageContent.query.filter_by(slug=slug).first():
+            db.session.add(PageContent(title=title, slug=slug, content=content, published=False))
+    db.session.commit()
     # Preserve the old one-learner referral attribution as a registration event.
     for referral in Referral.query.filter(Referral.referred_user_id.isnot(None)).all():
         exists = ReferralEvent.query.filter_by(
