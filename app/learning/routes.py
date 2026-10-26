@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, url_for
 from app.common.security import current_user, permission_required, audit
 from app.extensions import csrf, db
@@ -308,7 +309,14 @@ def _paystack_request(path, method="GET", payload=None):
         raise RuntimeError("Paystack API URL must use HTTPS.")
     endpoint = f"{base_url}/{path.lstrip('/')}"
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
-    headers = {"Authorization": f"Bearer {secret_key}", "Accept": "application/json"}
+    # A stable application User-Agent and explicit connection behavior match
+    # the known-working payment reference. Never log Authorization or payloads.
+    headers = {
+        "Authorization": f"Bearer {secret_key}",
+        "Accept": "application/json",
+        "User-Agent": "MawizAcademy-Payments/1.0",
+        "Connection": "close",
+    }
     if body is not None:
         headers["Content-Type"] = "application/json"
     # Never log the Authorization header, request body, email, or full key.
@@ -325,19 +333,34 @@ def _paystack_request(path, method="GET", payload=None):
             raw_response = response.read().decode("utf-8", errors="replace")
     except HTTPError as exc:
         raw_error = exc.read().decode("utf-8", errors="replace")
+        content_type = exc.headers.get_content_type() if exc.headers else "unknown"
         try:
-            error_data = json.loads(raw_error)
+            error_data = json.loads(raw_error or "{}")
+            if not isinstance(error_data, dict):
+                error_data = {}
         except (ValueError, TypeError):
             error_data = {}
-        provider_message = error_data.get("message") if isinstance(error_data, dict) else None
-        # Provider error messages are useful; cap length and do not log the raw response or headers.
+
+        provider_message = error_data.get("message")
+        if not provider_message and content_type not in ("application/json", "application/problem+json"):
+            # An HTML/non-JSON 403 can originate from a proxy, WAF, or network
+            # security layer; do not incorrectly diagnose every 403 as a bad key.
+            provider_message = (
+                f"Paystack endpoint returned a non-JSON HTTP {exc.code} response "
+                f"(content type: {content_type}). Check outbound proxy/WAF rules, "
+                "network filtering, and the Paystack API endpoint configuration."
+            )
+
         safe_message = _safe_log_text(provider_message)
         current_app.logger.warning(
-            "request_id=%s paystack_response endpoint=%s status=%s provider_message=%r",
-            request_id, endpoint, exc.code, safe_message or "(no message returned)",
+            "request_id=%s paystack_response endpoint=%s status=%s content_type=%s provider_message=%r",
+            request_id, endpoint, exc.code, content_type,
+            safe_message or "(no message returned)",
         )
-        if exc.code in (401, 403):
-            fallback = f"Paystack rejected authorization (HTTP {exc.code}). Check the active secret key and Paystack account access."
+        if exc.code == 401 or (exc.code == 403 and content_type in ("application/json", "application/problem+json")):
+            fallback = f"Paystack API authorization was rejected (HTTP {exc.code}). Confirm that the configured key is active and belongs to the intended test/live environment."
+        elif exc.code == 403:
+            fallback = f"Paystack endpoint returned HTTP 403 with content type {content_type}; this may be a network/proxy/security block rather than a rejected secret key."
         elif exc.code == 429:
             fallback = "Paystack rate limit reached. Wait briefly and try again."
         else:
@@ -363,6 +386,20 @@ def _paystack_request(path, method="GET", payload=None):
         message = data.get("message") if isinstance(data, dict) else None
         raise RuntimeError(message or "Paystack could not complete the request.")
     return data.get("data") or {}
+
+
+def _validated_paystack_checkout_url(value):
+    """Accept only HTTPS Paystack-hosted checkout URLs returned by initialization."""
+    parsed = urlsplit(str(value or "").strip())
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != "checkout.paystack.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or not parsed.path.startswith("/")
+    ):
+        raise RuntimeError("Paystack returned an invalid secure checkout URL. Please try again.")
+    return parsed.geturl()
 
 
 def _minor_units(amount):
@@ -674,9 +711,7 @@ def checkout(course_id):
             "callback_url": url_for("learning.paystack_callback", _external=True),
             "metadata": {"course_id": course.id, "payment_id": payment.id, "user_id": user.id},
         })
-        authorization_url = response.get("authorization_url")
-        if not authorization_url:
-            raise RuntimeError("Paystack did not return a checkout link.")
+        authorization_url = _validated_paystack_checkout_url(response.get("authorization_url"))
         db.session.commit()
         current_app.logger.info("request_id=%s checkout_initialized user_id=%s course_id=%s payment_id=%s", getattr(g, "request_id", "-"), user.id, course.id, payment.id)
     except RuntimeError as exc:
@@ -689,7 +724,11 @@ def checkout(course_id):
         )
         flash(str(exc), "error")
         return redirect(url_for("learning.course_detail", slug=course.slug))
-    return redirect(authorization_url)
+    return render_template(
+        "learning/payment_redirect.html",
+        checkout_url=authorization_url,
+        payment_context="course",
+    )
 
 
 @learning_bp.post("/courses/<int:course_id>/deadline-penalty")
@@ -730,9 +769,7 @@ def deadline_penalty_checkout(course_id):
             "callback_url": url_for("learning.paystack_callback", _external=True),
             "metadata": {"purpose": "deadline_penalty", "course_id": course.id, "payment_id": payment.id, "user_id": user.id},
         })
-        authorization_url = response.get("authorization_url")
-        if not authorization_url:
-            raise RuntimeError("Paystack did not return a checkout link.")
+        authorization_url = _validated_paystack_checkout_url(response.get("authorization_url"))
         db.session.commit()
     except RuntimeError as exc:
         payment.status = "initialization_failed"
@@ -740,7 +777,11 @@ def deadline_penalty_checkout(course_id):
         current_app.logger.warning("deadline_penalty_checkout_failed user_id=%s course_id=%s error=%s", user.id, course.id, _safe_log_text(exc))
         flash(str(exc), "error")
         return redirect(url_for("learning.course_detail", slug=course.slug))
-    return redirect(authorization_url)
+    return render_template(
+        "learning/payment_redirect.html",
+        checkout_url=authorization_url,
+        payment_context="deadline extension",
+    )
 
 
 @learning_bp.route("/payments")

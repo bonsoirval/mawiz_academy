@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Connecting to secure payment · Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page">
+  <div class="panel payment-redirect-panel">
+    <span class="eyebrow">SECURE PAYMENT</span>
+    <h1>Connecting to Paystack</h1>
+    <p>Your {{ payment_context }} payment session has been initialized. We are redirecting you to Paystack's secure checkout.</p>
+    <p>If you are not redirected automatically, use the link below.</p>
+    <p><a class="button" data-paystack-checkout-link href="{{ checkout_url }}" rel="noopener noreferrer">Continue to secure checkout</a></p>
+    <p class="muted small-text">Your card details are entered only on Paystack's secure checkout page.</p>
+  </div>
+</section>
+<script src="{{ url_for('static', filename='js/paystack-redirect.js') }}" defer></script>
+{% endblock %}

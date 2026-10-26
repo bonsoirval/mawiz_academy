@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 from flask import Blueprint, flash, redirect, render_template, request, url_for, current_app
 from sqlalchemy import func, or_
+from email_validator import validate_email, EmailNotValidError
 from app.common.security import permission_required, audit, current_user
 from app.common.settings import get_setting
 from app.extensions import db
@@ -166,6 +167,23 @@ def admin_resend_verification(user_id):
 def user_detail(user_id):
     user = User.query.get_or_404(user_id)
     if request.method == "POST":
+        submitted_email = request.form.get("email", "").strip()
+        try:
+            if not submitted_email:
+                raise EmailNotValidError("Email is required.")
+            normalized_email = validate_email(submitted_email, check_deliverability=False).normalized.lower()
+        except EmailNotValidError:
+            flash("Enter a valid email address.", "error")
+            return redirect(url_for("admin.user_detail", user_id=user.id))
+
+        duplicate_email = User.query.filter(
+            func.lower(User.email) == normalized_email,
+            User.id != user.id,
+        ).first()
+        if duplicate_email:
+            flash("That email address is already used by another account.", "error")
+            return redirect(url_for("admin.user_detail", user_id=user.id))
+
         role = request.form.get("role", "").strip()
         if role not in {"learner", "instructor", "mentor", "admin"}:
             flash("Invalid role selected.", "error")
@@ -177,14 +195,22 @@ def user_detail(user_id):
             flash("You cannot deactivate your own account.", "error")
             return redirect(url_for("admin.user_detail", user_id=user.id))
         old_role = user.role
+        old_email = user.email
         user.role = role
         user.is_active = request.form.get("is_active") == "on"
+        if normalized_email != (user.email or "").strip().lower():
+            user.email = normalized_email
+            # Verification belongs to the address, not just the account. A changed
+            # address must be verified before it can be treated as verified.
+            user.email_verified = False
         if not user.profile:
             user.profile = Profile(first_name=user.email.split("@")[0][:100], last_name="", onboarding_completed=False)
         user.profile.first_name = request.form.get("first_name", "").strip()[:100] or user.profile.first_name
         user.profile.last_name = request.form.get("last_name", "").strip()[:100]
         user.profile.headline = request.form.get("headline", "").strip()[:255]
         audit("admin.user_updated")
+        if old_email != user.email:
+            audit("admin.user_email_changed")
         db.session.commit()
         if old_role != user.role:
             audit("admin.user_role_changed")

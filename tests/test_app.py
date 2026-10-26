@@ -175,7 +175,7 @@ def test_profile_picture_upload_accepts_real_jpeg_signature(client, tmp_path):
         assert list((Path(tmp_path) / "uploads" / "profile_pictures").glob("*.jpg"))
 
 
-def test_paystack_checkout_creates_pending_payment_and_redirects(client, monkeypatch):
+def test_paystack_checkout_creates_pending_payment_and_renders_redirect_bridge(client, monkeypatch):
     with client.application.app_context():
         learner = User.query.filter_by(email="learner@mawiz.local").first()
         course = Course.query.filter_by(published=True).first()
@@ -204,8 +204,11 @@ def test_paystack_checkout_creates_pending_payment_and_redirects(client, monkeyp
 
     monkeypatch.setattr("app.learning.routes._paystack_request", fake_paystack)
     response = client.post(f"/learning/courses/{course_id}/checkout")
-    assert response.status_code == 302
-    assert response.headers["Location"] == "https://checkout.paystack.com/test-session"
+    assert response.status_code == 200
+    assert b"Connecting to Paystack" in response.data
+    assert b"https://checkout.paystack.com/test-session" in response.data
+    assert b"Continue to secure checkout" in response.data
+    assert b"paystack-redirect.js" in response.data
     with client.application.app_context():
         payment = CoursePayment.query.filter_by(user_id=learner_id, course_id=course_id).first()
         assert payment is not None
