@@ -1,7 +1,7 @@
 """Public pages, discovery, search, and referral-link entry routes."""
 
 from flask import Blueprint, render_template, request, abort, redirect, url_for, session, current_app, Response
-from app.models import User, Track, Course, Module, Project, Simulation, AuditEvent, Referral, ReferralClick, Coupon, Lesson, Quiz, Skill, LearnerSkill, PortfolioItem, Assignment, TrackRecommendationAttempt, PageContent, ContactMessage, Testimonial
+from app.models import User, Track, ProgramEnrollment, Enrollment, Course, Module, Project, Simulation, AuditEvent, Referral, ReferralClick, Coupon, Lesson, Quiz, Skill, LearnerSkill, PortfolioItem, Assignment, TrackRecommendationAttempt, PageContent, ContactMessage, Testimonial
 from app.extensions import db
 from app.common.settings import get_setting
 from app.common.security import current_user, audit
@@ -216,21 +216,34 @@ def assess_result():
 def programs():
     q = request.args.get("q", "").strip()[:100]
     tracks_query = Track.query.filter_by(published=True)
-    courses_query = Course.query.filter_by(published=True)
     if q:
         like = f"%{q}%"
         tracks_query = tracks_query.filter((Track.title.ilike(like)) | (Track.description.ilike(like)))
-        courses_query = courses_query.filter((Course.title.ilike(like)) | (Course.description.ilike(like)) | (Course.career_goal.ilike(like)))
     tracks = tracks_query.order_by(Track.title.asc()).all()
-    programs = courses_query.order_by(Course.title.asc()).all()
+    owned_ids = set()
+    user = current_user()
+    if user and user.role == "learner":
+        owned_ids = {row.track_id for row in ProgramEnrollment.query.filter_by(user_id=user.id, status="active").all()}
     if q:
-        return render_template("main/programs.html", tracks=tracks, programs=programs, q=q)
-    return _render_public_content("programs", "main/programs.html", tracks=tracks, programs=programs, q=q)
+        return render_template("main/programs.html", tracks=tracks, owned_ids=owned_ids, q=q)
+    return _render_public_content("programs", "main/programs.html", tracks=tracks, owned_ids=owned_ids, q=q)
+
+
+@main_bp.route("/program/<int:track_id>")
+def program_page(track_id):
+    track = Track.query.filter_by(id=track_id, published=True).first_or_404()
+    user = current_user()
+    enrollment = ProgramEnrollment.query.filter_by(user_id=user.id, track_id=track.id, status="active").first() if user and user.role == "learner" else None
+    return render_template("main/program_page.html", track=track, program_enrollment=enrollment)
+
 
 @main_bp.route("/programs/<int:course_id>")
 def program_detail(course_id):
+    # Legacy course-detail URLs redirect into a purchasable program, never a course checkout.
     course = Course.query.filter_by(id=course_id, published=True).first_or_404()
-    return render_template("main/program_detail.html", course=course)
+    if course.tracks:
+        return redirect(url_for("main.program_page", track_id=course.tracks[0].id))
+    return redirect(url_for("main.programs"))
 
 @main_bp.route("/how-it-works")
 def how_it_works():
@@ -310,11 +323,30 @@ def search():
     if q:
         like = f"%{q}%"
         results["tracks"] = Track.query.filter((Track.title.ilike(like)) | (Track.description.ilike(like))).limit(8).all()
-        results["courses"] = Course.query.filter((Course.title.ilike(like)) | (Course.description.ilike(like))).limit(8).all()
-        results["modules"] = Module.query.filter(Module.title.ilike(like)).limit(8).all()
-        results["lessons"] = Lesson.query.filter((Lesson.title.ilike(like)) | (Lesson.body.ilike(like))).limit(8).all()
-        results["quizzes"] = Quiz.query.filter((Quiz.title.ilike(like)) | (Quiz.instructions.ilike(like))).limit(8).all()
-        results["assignments"] = Assignment.query.filter((Assignment.title.ilike(like)) | (Assignment.instructions.ilike(like))).limit(8).all()
+        course_query = Course.query.filter((Course.title.ilike(like)) | (Course.description.ilike(like)))
+        module_query = Module.query.filter(Module.title.ilike(like))
+        lesson_query = Lesson.query.filter((Lesson.title.ilike(like)) | (Lesson.body.ilike(like)))
+        quiz_query = Quiz.query.filter((Quiz.title.ilike(like)) | (Quiz.instructions.ilike(like)))
+        assignment_query = Assignment.query.filter((Assignment.title.ilike(like)) | (Assignment.instructions.ilike(like)))
+        if user.role == "learner":
+            owned_track_ids = {row.track_id for row in ProgramEnrollment.query.filter_by(user_id=user.id, status="active").all()}
+            owned_course_ids = {c.id for tr in Track.query.filter(Track.id.in_(owned_track_ids)).all() for c in tr.courses} if owned_track_ids else set()
+            legacy_rows = Enrollment.query.filter_by(user_id=user.id).all()
+            for enrollment in legacy_rows:
+                if enrollment.course and not enrollment.course.tracks:
+                    owned_course_ids.add(enrollment.course_id)
+            module_ids = {m.id for m in Module.query.filter(Module.course_id.in_(owned_course_ids)).all()} if owned_course_ids else set()
+            lesson_ids = {l.id for l in Lesson.query.join(Module, Lesson.module_id == Module.id).filter(Module.course_id.in_(owned_course_ids)).all()} if owned_course_ids else set()
+            course_query = course_query.filter(Course.id.in_(owned_course_ids)) if owned_course_ids else course_query.filter(Course.id == -1)
+            module_query = module_query.filter(Module.course_id.in_(owned_course_ids)) if owned_course_ids else module_query.filter(Module.id == -1)
+            lesson_query = lesson_query.filter(Lesson.id.in_(lesson_ids)) if lesson_ids else lesson_query.filter(Lesson.id == -1)
+            quiz_query = quiz_query.join(Lesson, Quiz.lesson_id == Lesson.id).filter(Lesson.id.in_(lesson_ids)) if lesson_ids else quiz_query.filter(Quiz.id == -1)
+            assignment_query = assignment_query.outerjoin(Lesson, Assignment.lesson_id == Lesson.id).outerjoin(Module, Assignment.module_id == Module.id).filter(or_(Lesson.id.in_(lesson_ids), Module.id.in_(module_ids))) if lesson_ids or module_ids else assignment_query.filter(Assignment.id == -1)
+        results["courses"] = course_query.limit(8).all()
+        results["modules"] = module_query.limit(8).all()
+        results["lessons"] = lesson_query.limit(8).all()
+        results["quizzes"] = quiz_query.limit(8).all()
+        results["assignments"] = assignment_query.limit(8).all()
         results["projects"] = Project.query.filter((Project.title.ilike(like)) | (Project.problem.ilike(like))).limit(8).all()
         results["simulations"] = Simulation.query.filter((Simulation.title.ilike(like)) | (Simulation.scenario.ilike(like))).limit(8).all()
         results["skills"] = Skill.query.filter((Skill.name.ilike(like)) | (Skill.description.ilike(like))).limit(8).all()

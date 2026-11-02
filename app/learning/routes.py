@@ -16,9 +16,10 @@ from app.common.security import current_user, permission_required, audit
 from app.extensions import csrf, db
 from app.common.settings import get_bool, get_setting
 from app.models import (
-    Course, Lesson, Module, Enrollment, LessonProgress, ModuleProgress,
+    Course, Track, ProgramEnrollment, ProgramPayment, MGSCampaign, MGSCEvent, ShareLedgerEntry,
+    Lesson, Module, Enrollment, LessonProgress, ModuleProgress,
     Quiz, QuizAttempt, QuizResponse, ModuleQuiz, Assignment, AssignmentSubmission,
-    Coupon, CouponRedemption, CoursePayment, Referral, ReferralEvent, User,
+    Coupon, CouponRedemption, CoursePayment, Referral, ReferralEvent, ProgramReferralEvent, User,
 )
 learning_bp = Blueprint("learning", __name__, url_prefix="/learning")
 
@@ -38,16 +39,22 @@ def _safe_log_text(value, limit=300):
 
 PROGRAM_STAGE_ORDER = {"hard_skills": 1, "soft_skills": 2, "simulation": 3, "career_path": 4}
 
-def _stage_is_unlocked(user, stage):
-    """A stage unlocks only after every published course in the prior stage is complete."""
+def _stage_is_unlocked(user, stage, course=None):
+    """Unlock stages within the purchased program context when a course is supplied."""
     order = PROGRAM_STAGE_ORDER.get(stage, 1)
     if order <= 1:
         return True
     if stage == "career_path":
-        # Career Path requires both skill stages and all published simulations.
+        # Career Path requires skill stages within the learner's owned programs.
+        rows_scope = None
+        if course is not None:
+            owned_ids = {row.track_id for row in ProgramEnrollment.query.filter_by(user_id=user.id, status="active").all()}
+            rows_scope = {c.id for tr in Track.query.filter(Track.id.in_(owned_ids)).all() for c in tr.courses} if owned_ids else set()
         for required_stage in ("hard_skills", "soft_skills"):
             rows = Course.query.filter_by(published=True, stage=required_stage).all()
-            if not rows or not all(_is_course_completed(user.id, c) for c in rows):
+            if rows_scope is not None:
+                rows = [c for c in rows if c.id in rows_scope]
+            if rows and not all(_is_course_completed(user.id, c) for c in rows):
                 return False
         from app.models import SimulationAttempt
         from app.simulations.routes import simulations_for_learner
@@ -61,13 +68,110 @@ def _stage_is_unlocked(user, stage):
     if not previous:
         return False
     rows = Course.query.filter_by(published=True, stage=previous).all()
+    if course is not None:
+        owned_ids = {row.track_id for row in ProgramEnrollment.query.filter_by(user_id=user.id, status="active").all()}
+        relevant_track_ids = {tr.id for tr in course.tracks if tr.id in owned_ids}
+        if relevant_track_ids:
+            relevant_course_ids = {c.id for tr in Track.query.filter(Track.id.in_(relevant_track_ids)).all() for c in tr.courses}
+            rows = [c for c in rows if c.id in relevant_course_ids]
+        else:
+            rows = []
     if not rows:
-        return False
+        return True
     return all(_is_course_completed(user.id, c) for c in rows)
 
 
+def _learner_has_program_access(user_id, course):
+    """Return True only when a learner owns a program containing this course.
+
+    Courses not assigned to any program remain available to legacy enrolled learners,
+    but newly published learning content should be assigned to a purchasable program.
+    """
+    tracks = list(getattr(course, "tracks", []) or [])
+    if not tracks:
+        return Enrollment.query.filter_by(user_id=user_id, course_id=course.id).first() is not None
+    track_ids = [track.id for track in tracks]
+    return ProgramEnrollment.query.filter(
+        ProgramEnrollment.user_id == user_id,
+        ProgramEnrollment.track_id.in_(track_ids),
+        ProgramEnrollment.status == "active",
+    ).first() is not None
+
+
 def _enrollment(user_id, course_id):
-    return Enrollment.query.filter_by(user_id=user_id, course_id=course_id).first()
+    row = Enrollment.query.filter_by(user_id=user_id, course_id=course_id).first()
+    if not row or not row.course:
+        return row
+    if not _learner_has_program_access(user_id, row.course):
+        return None
+    return row
+
+
+def _mgsc_record_event(event_type, user_id=None, program_payment=None, occurred_at=None):
+    """Count attributed beneficiary events and refresh eligible system-revenue shares."""
+    occurred_at = occurred_at or datetime.now(timezone.utc)
+    registration = ReferralEvent.query.filter_by(
+        referred_user_id=user_id, event_type="registration"
+    ).order_by(ReferralEvent.created_at.asc()).first() if user_id else None
+    referral = registration.referral if registration else (
+        Referral.query.filter_by(referred_user_id=user_id).first() if user_id else None
+    )
+    campaigns = MGSCampaign.query.filter(
+        MGSCampaign.status == "active",
+        MGSCampaign.starts_at <= occurred_at,
+        MGSCampaign.ends_at >= occurred_at,
+    ).all()
+    for campaign in campaigns:
+        # Only the campaign beneficiary's own attributed registrations and program
+        # orders count toward their thresholds. System revenue itself is global.
+        attributed = bool(referral and referral.referrer_id == campaign.beneficiary_user_id)
+        if attributed and ((event_type == "signup" and user_id) or (event_type == "program_purchase" and program_payment)):
+            key = (f"mgsc:{campaign.id}:signup:{user_id}" if event_type == "signup"
+                   else f"mgsc:{campaign.id}:purchase:{program_payment.id}")
+            if not MGSCEvent.query.filter_by(event_key=key).first():
+                db.session.add(MGSCEvent(
+                    campaign_id=campaign.id, event_type=event_type, user_id=user_id,
+                    program_payment_id=program_payment.id if program_payment else None,
+                    event_key=key, amount=program_payment.amount if program_payment else 0,
+                    currency=program_payment.currency if program_payment else "NGN", occurred_at=occurred_at,
+                ))
+                db.session.flush()
+
+        signups = MGSCEvent.query.filter_by(campaign_id=campaign.id, event_type="signup").count()
+        purchases = MGSCEvent.query.filter_by(campaign_id=campaign.id, event_type="program_purchase").count()
+        campaign.eligible_signup_count = signups
+        campaign.eligible_purchase_count = purchases
+        counts_eligible = (
+            campaign.min_signups <= signups <= campaign.max_signups
+            and campaign.min_program_purchases <= purchases <= campaign.max_program_purchases
+        )
+        if counts_eligible and campaign.eligible_at is None:
+            campaign.eligible_at = occurred_at
+
+        # Eligibility is triggered live, while the share base is total eligible
+        # Mawiz system revenue from the campaign start through the current event.
+        # This intentionally includes eligible revenue generated earlier in the
+        # campaign, matching the configured campaign-wide revenue basis.
+        if campaign.eligible_at:
+            from sqlalchemy import func
+            revenue_query = db.session.query(func.coalesce(func.sum(ProgramPayment.eligible_revenue_amount), 0)).filter(
+                ProgramPayment.status == "success",
+                ProgramPayment.paid_at >= campaign.starts_at,
+                ProgramPayment.paid_at <= occurred_at,
+            )
+            revenue = Decimal(str(revenue_query.scalar() or 0))
+            share = (revenue * Decimal(str(campaign.share_percent or 0)) / Decimal("100")).quantize(Decimal("0.01"))
+            campaign.estimated_share_amount = share
+            ledger = ShareLedgerEntry.query.filter_by(campaign_id=campaign.id, entry_type="estimate").first()
+            if not ledger:
+                ledger = ShareLedgerEntry(campaign_id=campaign.id, entry_type="estimate", basis_amount=revenue,
+                    share_percent=campaign.share_percent, amount=share, currency="NGN", status="estimated",
+                    description="Live MGSC share of total eligible system revenue during campaign")
+                db.session.add(ledger)
+            else:
+                ledger.basis_amount = revenue
+                ledger.share_percent = campaign.share_percent
+                ledger.amount = share
 
 
 def _add_months(value, months):
@@ -440,7 +544,7 @@ def _record_referral_purchase(payment):
     if ReferralEvent.query.filter_by(payment_id=payment.id).first():
         return
     try:
-        share_percent = Decimal(get_setting("referral_share_percent", "10"))
+        share_percent = Decimal(referral.share_percent if referral.share_percent is not None else get_setting("normal_referral_share_percent", get_setting("referral_share_percent", "10")))
     except (InvalidOperation, TypeError, ValueError):
         share_percent = Decimal("10")
     commission = (Decimal(payment.amount) * share_percent / Decimal("100")).quantize(Decimal("0.01"))
@@ -540,6 +644,15 @@ def courses():
     active_enrollment = None
     enrollments_by_course = {}
     if user and user.role == "learner":
+        owned_track_ids = {row.track_id for row in ProgramEnrollment.query.filter_by(user_id=user.id, status="active").all()}
+        filtered_courses = []
+        for item in course_rows:
+            item_track_ids = {track.id for track in item.tracks}
+            if item_track_ids.intersection(owned_track_ids):
+                filtered_courses.append(item)
+            elif not item_track_ids and Enrollment.query.filter_by(user_id=user.id, course_id=item.id).first():
+                filtered_courses.append(item)
+        course_rows = filtered_courses
         active_enrollment = _active_enrollment(user.id)
         enrollments_by_course = {
             row.course_id: row
@@ -576,7 +689,7 @@ def courses():
         first_login=request.args.get("first_login") == "1",
         active_enrollment=active_enrollment,
         enrollments_by_course=enrollments_by_course,
-        stage_unlocked={c.id: (_stage_is_unlocked(user, getattr(c, "stage", "hard_skills")) if user and user.role == "learner" else True) for c in course_rows},
+        stage_unlocked={c.id: (_stage_is_unlocked(user, getattr(c, "stage", "hard_skills"), course=c) if user and user.role == "learner" else True) for c in course_rows},
         course_deadline_info=course_deadline_info if user and user.role == "learner" else {},
     )
 
@@ -586,7 +699,10 @@ def courses():
 def course_detail(slug):
     course = Course.query.filter_by(slug=slug, published=True).first_or_404()
     user = current_user()
-    if user and user.role == "learner" and not _stage_is_unlocked(user, getattr(course, "stage", "hard_skills")):
+    if user and user.role == "learner" and not _learner_has_program_access(user.id, course):
+        flash("This course belongs to a program you have not purchased. Browse programs to get access.", "error")
+        return redirect(url_for("main.programs"))
+    if user and user.role == "learner" and not _stage_is_unlocked(user, getattr(course, "stage", "hard_skills"), course=course):
         flash("Complete the previous Learning Path stage before opening this course.", "warning")
         return redirect(url_for("learning.courses"))
     enrollment = _enrollment(user.id, course.id) if user and user.role == "learner" else None
@@ -626,7 +742,10 @@ def course_detail(slug):
 def enroll(course_id):
     user = current_user()
     course = Course.query.filter_by(id=course_id, published=True).first_or_404()
-    if not _stage_is_unlocked(user, getattr(course, "stage", "hard_skills")):
+    if course.tracks or not Enrollment.query.filter_by(user_id=user.id, course_id=course.id).first():
+        flash("Courses are accessed through a program and cannot be enrolled in individually.", "info")
+        return redirect(url_for("main.programs"))
+    if not _stage_is_unlocked(user, getattr(course, "stage", "hard_skills"), course=course):
         flash("This course is locked until you complete the previous stage.", "warning")
         return redirect(url_for("learning.courses"))
     if _enrollment(user.id, course.id):
@@ -658,77 +777,155 @@ def enroll(course_id):
     return redirect(url_for("learning.course_detail", slug=course.slug))
 
 
-@learning_bp.post("/courses/<int:course_id>/checkout")
+@learning_bp.post("/programs/<int:track_id>/checkout")
 @permission_required("learning.enrollment.create", "learner")
-def checkout(course_id):
+def program_checkout(track_id):
     user = current_user()
-    course = Course.query.filter_by(id=course_id, published=True).first_or_404()
-    if not _stage_is_unlocked(user, getattr(course, "stage", "hard_skills")):
-        flash("This course is locked until you complete the previous stage.", "warning")
-        return redirect(url_for("learning.courses"))
-    if _enrollment(user.id, course.id):
-        return redirect(url_for("learning.course_detail", slug=course.slug))
-    active = _active_enrollment(user.id, excluding_course_id=course.id)
-    if active:
-        active_course = db.session.get(Course, active.course_id)
-        flash(f"Complete {active_course.title if active_course else 'your current course'} before starting another course.", "error")
-        return redirect(url_for("learning.course_detail", slug=active_course.slug if active_course else course.slug))
-    amount = Decimal(course.price.amount if course.price else 0)
-    if amount <= 0:
-        return redirect(url_for("learning.enroll", course_id=course.id), code=307)
-    coupon_code = request.form.get("coupon_code", "").strip() or (user.signup_coupon_code or "")
-    try:
-        coupon, discount, _ = _coupon_offer(user, coupon_code, amount, course.id) if coupon_code.strip() else (None, Decimal("0"), None)
-    except ValueError as exc:
-        flash(str(exc), "error")
-        return redirect(url_for("learning.course_detail", slug=course.slug))
-    amount_due = max(Decimal("0"), amount - discount)
-    if amount_due == 0:
-        return redirect(url_for("learning.enroll", course_id=course.id), code=307)
+    track = Track.query.filter_by(id=track_id, published=True).first_or_404()
+    if ProgramEnrollment.query.filter_by(user_id=user.id, track_id=track.id, status="active").first():
+        flash("You already have access to this program.", "info")
+        return redirect(url_for("main.program_page", track_id=track.id))
+    if not any(course.published for course in track.courses):
+        flash("This program is not ready for enrolment because it has no published courses.", "warning")
+        return redirect(url_for("main.program_page", track_id=track.id))
+    amount = Decimal(str(track.price_amount or 0))
+    if amount < 0:
+        flash("This program is not configured for purchase yet.", "error")
+        return redirect(url_for("main.program_page", track_id=track.id))
+    if amount == 0:
+        now = datetime.now(timezone.utc)
+        entitlement = ProgramEnrollment.query.filter_by(user_id=user.id, track_id=track.id).first()
+        if entitlement:
+            entitlement.purchased_at = now
+            entitlement.status = "active"
+        else:
+            entitlement = ProgramEnrollment(user_id=user.id, track_id=track.id, purchased_at=now, status="active")
+            db.session.add(entitlement)
+        db.session.flush()
+        for course in track.courses:
+            if not course.published:
+                continue
+            existing = Enrollment.query.filter_by(user_id=user.id, course_id=course.id).first()
+            if not existing:
+                db.session.add(Enrollment(user_id=user.id, course_id=course.id, progress=0, started_at=now,
+                    deadline_at=_course_deadline(course, now)))
+            elif (existing.progress or 0) < 100:
+                shared_with_other_owned_program = any(
+                    other.id != track.id and ProgramEnrollment.query.filter_by(user_id=user.id, track_id=other.id, status="active").first()
+                    for other in course.tracks
+                )
+                if not shared_with_other_owned_program:
+                    existing.started_at = now
+                    existing.deadline_at = _course_deadline(course, now)
+        db.session.commit()
+        flash("Program access activated. Your course completion periods start from today.", "success")
+        return redirect(url_for("main.program_page", track_id=track.id))
 
-    payment = CoursePayment(
-        user_id=user.id,
-        course_id=course.id,
-        coupon_id=coupon.id if coupon else None,
-        reference=f"mawiz-{uuid.uuid4().hex}",
-        amount=amount_due,
-        currency=course.price.currency if course.price else "NGN",
-        discount_amount=discount,
-    )
-    db.session.add(payment)
-    db.session.flush()
-    current_app.logger.info(
-        "request_id=%s checkout_started user_id=%s course_id=%s payment_id=%s amount=%s currency=%s",
-        getattr(g, "request_id", "-"), user.id, course.id,
-        payment.id, str(amount_due), payment.currency,
-    )
+    payment = ProgramPayment(user_id=user.id, track_id=track.id, reference=f"mawiz-program-{uuid.uuid4().hex}",
+        amount=amount, currency=track.price_currency or "NGN")
+    db.session.add(payment); db.session.flush()
     try:
         response = _paystack_request("/transaction/initialize", method="POST", payload={
-            "email": (user.email or "").strip().lower(),
-            "amount": _minor_units(amount_due),
-            "currency": payment.currency,
-            "reference": payment.reference,
+            "email": (user.email or "").strip().lower(), "amount": _minor_units(amount),
+            "currency": payment.currency, "reference": payment.reference,
             "callback_url": url_for("learning.paystack_callback", _external=True),
-            "metadata": {"course_id": course.id, "payment_id": payment.id, "user_id": user.id},
+            "metadata": {"purchase_type": "program", "track_id": track.id, "program_payment_id": payment.id, "user_id": user.id},
         })
         authorization_url = _validated_paystack_checkout_url(response.get("authorization_url"))
         db.session.commit()
-        current_app.logger.info("request_id=%s checkout_initialized user_id=%s course_id=%s payment_id=%s", getattr(g, "request_id", "-"), user.id, course.id, payment.id)
     except RuntimeError as exc:
-        payment.status = "initialization_failed"
-        db.session.commit()
-        current_app.logger.warning(
-            "request_id=%s checkout_initialization_failed user_id=%s course_id=%s payment_id=%s error=%s",
-            getattr(g, "request_id", "-"), user.id, course.id,
-            payment.id, _safe_log_text(exc),
-        )
+        payment.status = "initialization_failed"; db.session.commit()
+        current_app.logger.warning("program_checkout_initialization_failed user_id=%s track_id=%s error=%s", user.id, track.id, _safe_log_text(exc))
         flash(str(exc), "error")
-        return redirect(url_for("learning.course_detail", slug=course.slug))
-    return render_template(
-        "learning/payment_redirect.html",
-        checkout_url=authorization_url,
-        payment_context="course",
-    )
+        return redirect(url_for("main.program_page", track_id=track.id))
+    return render_template("learning/payment_redirect.html", checkout_url=authorization_url, payment_context="program")
+
+
+def _record_program_referral_purchase(payment):
+    """Credit one verified program order to its original ambassador/SUG referral code."""
+    if not get_bool("referral_program_enabled", True):
+        return
+    if ProgramReferralEvent.query.filter_by(program_payment_id=payment.id).first():
+        return
+    registration = ReferralEvent.query.filter_by(referred_user_id=payment.user_id, event_type="registration").order_by(ReferralEvent.created_at.asc()).first()
+    referral = registration.referral if registration else Referral.query.filter_by(referred_user_id=payment.user_id).first()
+    if not referral or referral.referrer_id == payment.user_id or referral.status != "active":
+        return
+    paid_at = payment.paid_at or datetime.now(timezone.utc)
+    starts_at = referral.starts_at.replace(tzinfo=timezone.utc) if referral.starts_at and referral.starts_at.tzinfo is None else referral.starts_at
+    ends_at = referral.ends_at.replace(tzinfo=timezone.utc) if referral.ends_at and referral.ends_at.tzinfo is None else referral.ends_at
+    paid_at_cmp = paid_at.replace(tzinfo=timezone.utc) if paid_at.tzinfo is None else paid_at
+    if starts_at and paid_at_cmp < starts_at:
+        return
+    if ends_at and paid_at_cmp > ends_at:
+        return
+    try:
+        share_percent = Decimal(referral.share_percent if referral.share_percent is not None else get_setting("normal_referral_share_percent", get_setting("referral_share_percent", "10")))
+    except (InvalidOperation, TypeError, ValueError):
+        share_percent = Decimal("10")
+    commission = (Decimal(payment.amount) * share_percent / Decimal("100")).quantize(Decimal("0.01"))
+    db.session.add(ProgramReferralEvent(referral_id=referral.id, referred_user_id=payment.user_id,
+        program_payment_id=payment.id, amount=payment.amount, commission_amount=commission,
+        currency=payment.currency, status="eligible"))
+    audit("referral.program_purchase_completed")
+
+
+def _finalize_program_payment(payment):
+    """Verify exact Paystack details, grant the program and set deadlines from purchase time."""
+    result = _paystack_request(f"/transaction/verify/{payment.reference}")
+    expected_email = payment.user.email.strip().lower()
+    received_email = (result.get("customer") or {}).get("email", "").strip().lower()
+    if (result.get("status") != "success" or result.get("reference") != payment.reference
+        or int(result.get("amount") or 0) != _minor_units(payment.amount)
+        or result.get("currency") != payment.currency or received_email != expected_email):
+        payment.status = result.get("status") or "verification_failed"; db.session.commit(); return False
+    newly_paid = payment.status != "success"
+    if newly_paid:
+        payment.status = "success"
+        payment.paystack_transaction_id = str(result.get("id") or "")
+        payment.paid_at = datetime.now(timezone.utc)
+        provider_fee_minor = int(result.get("fees") or 0)
+        payment.provider_fee_amount = (Decimal(provider_fee_minor) / Decimal("100")).quantize(Decimal("0.01"))
+        payment.eligible_revenue_amount = max(Decimal("0.00"), Decimal(payment.amount) - payment.provider_fee_amount).quantize(Decimal("0.01"))
+        paid_at = payment.paid_at
+        entitlement = ProgramEnrollment.query.filter_by(user_id=payment.user_id, track_id=payment.track_id).first()
+        if not entitlement:
+            entitlement = ProgramEnrollment(user_id=payment.user_id, track_id=payment.track_id, payment_id=payment.id,
+                purchased_at=paid_at, status="active")
+            db.session.add(entitlement)
+        else:
+            entitlement.status = "active"
+            entitlement.purchased_at = paid_at
+        for course in payment.track.courses:
+            if not course.published:
+                continue
+            enrollment = Enrollment.query.filter_by(user_id=payment.user_id, course_id=course.id).first()
+            if not enrollment:
+                db.session.add(Enrollment(user_id=payment.user_id, course_id=course.id, progress=0,
+                    started_at=paid_at, deadline_at=_course_deadline(course, paid_at)))
+            elif (enrollment.progress or 0) < 100 and not CoursePayment.query.filter_by(
+                user_id=payment.user_id, course_id=course.id, purpose="deadline_penalty", status="success").first():
+                shared_with_other_owned_program = any(
+                    other.id != payment.track_id and ProgramEnrollment.query.filter_by(user_id=payment.user_id, track_id=other.id, status="active").first()
+                    for other in course.tracks
+                )
+                # Never reset a deadline already serving another active program.
+                if not shared_with_other_owned_program:
+                    enrollment.started_at = paid_at
+                    enrollment.deadline_at = _course_deadline(course, paid_at)
+        _record_program_referral_purchase(payment)
+        _mgsc_record_event("program_purchase", user_id=payment.user_id, program_payment=payment, occurred_at=paid_at)
+    db.session.commit()
+    return True
+
+
+@learning_bp.post("/courses/<int:course_id>/checkout")
+@permission_required("learning.enrollment.create", "learner")
+def checkout(course_id):
+    # Individual course checkout has been retired. Course access is purchased by program.
+    Course.query.filter_by(id=course_id, published=True).first_or_404()
+    flash("Individual course purchases are no longer available. Choose a program instead.", "info")
+    return redirect(url_for("main.programs"))
 
 
 @learning_bp.post("/courses/<int:course_id>/deadline-penalty")
@@ -790,12 +987,22 @@ def payment_history():
     """List only the signed-in learner's own course payments."""
     user = current_user()
     rows = CoursePayment.query.filter_by(user_id=user.id).order_by(CoursePayment.created_at.desc()).limit(100).all()
-    return render_template("learning/payments.html", payments=rows)
+    program_rows = ProgramPayment.query.filter_by(user_id=user.id).order_by(ProgramPayment.created_at.desc()).limit(100).all()
+    return render_template("learning/payments.html", payments=rows, program_payments=program_rows)
 
 
 @learning_bp.route("/payments/paystack/callback")
 def paystack_callback():
     reference = request.args.get("reference", "").strip()
+    program_payment = ProgramPayment.query.filter_by(reference=reference).first()
+    if program_payment:
+        try:
+            paid = _finalize_program_payment(program_payment)
+        except RuntimeError:
+            flash("We could not verify your program payment yet. Please try again shortly.", "error")
+            return redirect(url_for("main.program_page", track_id=program_payment.track_id))
+        flash("Program payment verified. Your courses are now available." if paid else "Program payment was not successful; access has not been granted.", "success" if paid else "error")
+        return redirect(url_for("main.program_page", track_id=program_payment.track_id))
     payment = CoursePayment.query.filter_by(reference=reference).first()
     if not payment:
         flash("We could not find that payment.", "error")
@@ -824,6 +1031,13 @@ def paystack_webhook():
     payload = request.get_json(silent=True) or {}
     if payload.get("event") == "charge.success":
         reference = (payload.get("data") or {}).get("reference", "")
+        program_payment = ProgramPayment.query.filter_by(reference=reference).first()
+        if program_payment and program_payment.status != "success":
+            try:
+                _finalize_program_payment(program_payment)
+            except RuntimeError:
+                current_app.logger.exception("Unable to verify Paystack program payment %s", program_payment.reference)
+                return jsonify({"ok": False}), 503
         payment = CoursePayment.query.filter_by(reference=reference).first()
         if payment and payment.status != "success":
             try:

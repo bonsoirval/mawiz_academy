@@ -140,12 +140,112 @@ course_skill = db.Table(
 
 
 class Track(db.Model):
+    """A purchasable learning program (historically called a Track)."""
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     slug = db.Column(db.String(220), unique=True, nullable=False)
     description = db.Column(db.Text, default="")
     published = db.Column(db.Boolean, default=False, nullable=False)
+    price_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    price_currency = db.Column(db.String(3), nullable=False, default="NGN")
     courses = db.relationship("Course", secondary="track_course", back_populates="tracks", order_by="Course.title")
+
+    @property
+    def is_paid(self):
+        return (self.price_amount or 0) > 0
+
+
+class ProgramEnrollment(db.Model):
+    __tablename__ = "program_enrollment"
+    """Student entitlement to a purchased program."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    track_id = db.Column(db.Integer, db.ForeignKey("track.id", ondelete="CASCADE"), nullable=False, index=True)
+    payment_id = db.Column(db.Integer, db.ForeignKey("program_payment.id", ondelete="SET NULL"), nullable=True, unique=True)
+    purchased_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    status = db.Column(db.String(24), nullable=False, default="active", index=True)
+    completed_at = db.Column(db.DateTime)
+    user = db.relationship("User")
+    track = db.relationship("Track")
+    __table_args__ = (db.UniqueConstraint("user_id", "track_id", name="uq_program_enrollment_user_track"),)
+
+
+class ProgramPayment(db.Model):
+    __tablename__ = "program_payment"
+    """Verified Paystack purchase of a complete program, never an individual course."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    track_id = db.Column(db.Integer, db.ForeignKey("track.id", ondelete="RESTRICT"), nullable=False, index=True)
+    reference = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    currency = db.Column(db.String(3), nullable=False, default="NGN")
+    discount_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    provider_fee_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    eligible_revenue_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    status = db.Column(db.String(32), nullable=False, default="pending", index=True)
+    paystack_transaction_id = db.Column(db.String(64))
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    paid_at = db.Column(db.DateTime)
+    user = db.relationship("User")
+    track = db.relationship("Track")
+
+
+class MGSCampaign(db.Model):
+    __tablename__ = "mgsc_campaign"
+    """Mawiz Growth Share Campaign: temporary count-gated system-revenue share."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(180), nullable=False)
+    beneficiary_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), index=True)
+    beneficiary_name = db.Column(db.String(180), nullable=False, default="")
+    starts_at = db.Column(db.DateTime, nullable=False, index=True)
+    ends_at = db.Column(db.DateTime, nullable=False, index=True)
+    min_signups = db.Column(db.Integer, nullable=False, default=0)
+    max_signups = db.Column(db.Integer, nullable=False, default=2147483647)
+    min_program_purchases = db.Column(db.Integer, nullable=False, default=0)
+    max_program_purchases = db.Column(db.Integer, nullable=False, default=2147483647)
+    share_percent = db.Column(db.Numeric(7, 4), nullable=False, default=0)
+    revenue_basis = db.Column(db.String(32), nullable=False, default="system_eligible_revenue")
+    status = db.Column(db.String(24), nullable=False, default="draft", index=True)
+    eligible_at = db.Column(db.DateTime)
+    eligible_signup_count = db.Column(db.Integer, nullable=False, default=0)
+    eligible_purchase_count = db.Column(db.Integer, nullable=False, default=0)
+    estimated_share_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    accrued_share_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    beneficiary = db.relationship("User")
+
+
+class MGSCEvent(db.Model):
+    __tablename__ = "mgsc_event"
+    """Idempotent signup or program-purchase event counted by MGSC."""
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("mgsc_campaign.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = db.Column(db.String(24), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
+    program_payment_id = db.Column(db.Integer, db.ForeignKey("program_payment.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_key = db.Column(db.String(160), nullable=False, unique=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    currency = db.Column(db.String(3), nullable=False, default="NGN")
+    occurred_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    campaign = db.relationship("MGSCampaign")
+    user = db.relationship("User")
+    program_payment = db.relationship("ProgramPayment")
+
+
+class ShareLedgerEntry(db.Model):
+    __tablename__ = "share_ledger_entry"
+    """Auditable accrual/reversal ledger for temporary system-share campaigns."""
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("mgsc_campaign.id", ondelete="RESTRICT"), nullable=False, index=True)
+    entry_type = db.Column(db.String(24), nullable=False, default="accrual")
+    basis_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    share_percent = db.Column(db.Numeric(7, 4), nullable=False, default=0)
+    amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    currency = db.Column(db.String(3), nullable=False, default="NGN")
+    status = db.Column(db.String(24), nullable=False, default="estimated", index=True)
+    description = db.Column(db.String(500), default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    campaign = db.relationship("MGSCampaign")
 
 
 class TrackCourse(db.Model):
@@ -489,6 +589,11 @@ class Referral(db.Model):
     referrer_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
     referred_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
     code = db.Column(db.String(80), nullable=False, unique=True, index=True)
+    referral_type = db.Column(db.String(24), nullable=False, default="normal", index=True)
+    share_percent = db.Column(db.Numeric(5, 2), nullable=False, default=10)
+    label = db.Column(db.String(180), default="")
+    starts_at = db.Column(db.DateTime)
+    ends_at = db.Column(db.DateTime)
     link_token = db.Column(db.String(96), nullable=False, unique=True, index=True)
     clicks = db.Column(db.Integer, nullable=False, default=0)
     last_clicked_at = db.Column(db.DateTime)
@@ -525,6 +630,24 @@ class ReferralEvent(db.Model):
     __table_args__ = (
         db.UniqueConstraint("referred_user_id", "event_type", name="uq_referral_event_user_type"),
     )
+
+
+class ProgramReferralEvent(db.Model):
+    __tablename__ = "program_referral_event"
+    """Referral commission attributed to one verified program order."""
+    id = db.Column(db.Integer, primary_key=True)
+    referral_id = db.Column(db.Integer, db.ForeignKey("referral.id", ondelete="CASCADE"), nullable=False, index=True)
+    referred_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
+    program_payment_id = db.Column(db.Integer, db.ForeignKey("program_payment.id", ondelete="SET NULL"), nullable=False, unique=True, index=True)
+    event_type = db.Column(db.String(32), nullable=False, default="program_purchase", index=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    commission_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    currency = db.Column(db.String(3), nullable=False, default="NGN")
+    status = db.Column(db.String(24), nullable=False, default="eligible", index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    referral = db.relationship("Referral", backref=db.backref("program_events", cascade="all, delete-orphan"))
+    referred_user = db.relationship("User", foreign_keys=[referred_user_id])
+    program_payment = db.relationship("ProgramPayment")
 
 
 class ReferralPayout(db.Model):

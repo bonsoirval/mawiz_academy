@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}{{ track.title }} — Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page narrow">
+  <span class="eyebrow">MAWIZ LEARNING PROGRAM</span>
+  <h1>{{ track.title }}</h1>
+  <p class="lead">{{ track.description }}</p>
+  <section class="panel">
+    <h2>Program details</h2>
+    <p>{{ track.courses|selectattr('published')|list|length }} course{{ '' if track.courses|length == 1 else 's' }} included</p>
+    <p><strong>Program price: {% if track.price_amount and track.price_amount > 0 %}₦{{ '{:,.2f}'.format(track.price_amount) }}{% else %}Free{% endif %}</strong></p>
+    {% if program_enrollment %}
+      <p class="tag">You have access to this program.</p>
+      <h3>Included courses</h3>
+      <div class="module-list">
+      {% for course in track.courses if course.published %}
+        <article><span>{{ '%02d'|format(loop.index) }}</span><div><h3>{{ course.title }}</h3><p>{{ course.description|truncate(180) }}</p><small>Completion period: {{ course.duration_label }} from program purchase</small><p><a href="{{ url_for('learning.course_detail', slug=course.slug) }}">Open course →</a></p></div></article>
+      {% else %}<p>No published courses have been assigned yet.</p>{% endfor %}
+      </div>
+    {% elif current_user and current_user.role == 'learner' %}
+      <form method="post" action="{{ url_for('learning.program_checkout', track_id=track.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="button" type="submit">{{ 'Enrol in free program' if not track.price_amount or track.price_amount <= 0 else 'Purchase program' }}</button>
+      </form>
+      <p>Course titles and learning content become visible after you enrol in this program.</p>
+    {% else %}
+      <a class="button" href="{{ url_for('auth.login', next=url_for('main.program_page', track_id=track.id)) }}">Sign in to enrol</a>
+      <p>Course titles and learning content become visible after you enrol in this program.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

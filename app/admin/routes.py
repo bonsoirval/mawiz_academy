@@ -6,17 +6,17 @@ from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
-from flask import Blueprint, flash, redirect, render_template, request, url_for, current_app
+from flask import Blueprint, flash, redirect, render_template, request, url_for, current_app, jsonify
 from sqlalchemy import func, or_
 from email_validator import validate_email, EmailNotValidError
 from app.common.security import permission_required, audit, current_user
 from app.common.settings import get_setting
 from app.extensions import db
 from app.models import (
-    User, Profile, Course, Module, Lesson, Quiz, QuizQuestion, Project,
+    User, Profile, Course, Track, ProgramPayment, Module, Lesson, Quiz, QuizQuestion, Project, MGSCampaign,
     Simulation, ProjectSubmission, AssignmentSubmission, Permission, UserPermission, RolePermission,
     Enrollment, LessonProgress, QuizAttempt, AssessmentAttempt, PortfolioItem,
-    SimulationAttempt, AuditEvent, Referral, ReferralEvent, Coupon, CouponRedemption, SystemSetting, Track, TrackCourse, CoursePrice, CoursePayment, Assignment, ModuleQuiz, Skill, CareerPathContent, PageContent, ReferralPayout, ContactMessage, Testimonial
+    SimulationAttempt, AuditEvent, Referral, ReferralEvent, ProgramReferralEvent, Coupon, CouponRedemption, SystemSetting, TrackCourse, CoursePrice, CoursePayment, Assignment, ModuleQuiz, Skill, CareerPathContent, PageContent, ReferralPayout, ContactMessage, Testimonial
 )
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -101,24 +101,34 @@ def dashboard():
 @admin_bp.route("/payments")
 @permission_required("admin.dashboard.view", "admin")
 def payments():
-    """Show recent course and deadline-penalty transactions for administrators."""
+    """Show program purchases and retained legacy course/deadline transactions."""
     status = request.args.get("status", "").strip().lower()
     search = request.args.get("q", "").strip()[:120]
-    query = CoursePayment.query
-    if status in {"pending", "success", "failed", "abandoned", "initialization_failed", "verification_failed", "ongoing", "processing", "reversed"}:
-        query = query.filter(CoursePayment.status == status)
+    valid_statuses = {"pending", "success", "failed", "abandoned", "initialization_failed", "verification_failed", "ongoing", "processing", "reversed"}
+    legacy_query = CoursePayment.query
+    program_query = ProgramPayment.query
+    if status in valid_statuses:
+        legacy_query = legacy_query.filter(CoursePayment.status == status)
+        program_query = program_query.filter(ProgramPayment.status == status)
     if search:
         pattern = f"%{search}%"
-        query = query.join(User, CoursePayment.user_id == User.id).join(Course, CoursePayment.course_id == Course.id).filter(
+        legacy_query = legacy_query.join(User, CoursePayment.user_id == User.id).join(Course, CoursePayment.course_id == Course.id).filter(
             or_(User.email.ilike(pattern), Course.title.ilike(pattern), CoursePayment.reference.ilike(pattern))
         )
-    rows = query.order_by(CoursePayment.created_at.desc()).limit(250).all()
+        program_query = program_query.join(User, ProgramPayment.user_id == User.id).join(Track, ProgramPayment.track_id == Track.id).filter(
+            or_(User.email.ilike(pattern), Track.title.ilike(pattern), ProgramPayment.reference.ilike(pattern))
+        )
+    legacy_rows = legacy_query.order_by(CoursePayment.created_at.desc()).limit(250).all()
+    program_rows = program_query.order_by(ProgramPayment.created_at.desc()).limit(250).all()
+    transactions = [("legacy", row) for row in legacy_rows] + [("program", row) for row in program_rows]
+    transactions.sort(key=lambda item: item[1].created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    transactions = transactions[:250]
     totals = {
-        "count": CoursePayment.query.count(),
-        "successful": CoursePayment.query.filter_by(status="success").count(),
-        "pending": CoursePayment.query.filter_by(status="pending").count(),
+        "count": CoursePayment.query.count() + ProgramPayment.query.count(),
+        "successful": CoursePayment.query.filter_by(status="success").count() + ProgramPayment.query.filter_by(status="success").count(),
+        "pending": CoursePayment.query.filter_by(status="pending").count() + ProgramPayment.query.filter_by(status="pending").count(),
     }
-    return render_template("admin/payments.html", payments=rows, status=status, search=search, totals=totals)
+    return render_template("admin/payments.html", transactions=transactions, status=status, search=search, totals=totals)
 
 
 @admin_bp.route("/users")
@@ -880,7 +890,15 @@ def create_track():
     elif Track.query.filter_by(slug=slug).first():
         flash("That track already exists.", "error")
     else:
-        db.session.add(Track(title=title, slug=slug, description=request.form.get("description", "").strip(), published=False))
+        price_raw = request.form.get("price_amount", "0").strip() or "0"
+        try:
+            price_amount = Decimal(price_raw)
+            if price_amount < 0:
+                raise InvalidOperation
+        except (InvalidOperation, ValueError):
+            flash("Enter a valid non-negative program price.", "error")
+            return _course_management_redirect(request.form.get("stage", "hard_skills"))
+        db.session.add(Track(title=title, slug=slug, description=request.form.get("description", "").strip(), published=False, price_amount=price_amount, price_currency="NGN"))
         audit("admin.track_created")
         db.session.commit()
         flash("Track created as a draft.", "success")
@@ -901,6 +919,14 @@ def edit_track(track_id):
     else:
         track.title, track.slug = title, slug
         track.description = request.form.get("description", "").strip()
+        try:
+            price_amount = Decimal(request.form.get("price_amount", str(track.price_amount or 0)).strip() or "0")
+            if price_amount < 0:
+                raise InvalidOperation
+            track.price_amount = price_amount
+        except (InvalidOperation, ValueError):
+            flash("Enter a valid non-negative program price.", "error")
+            return _course_management_redirect(request.form.get("stage", "hard_skills"))
         audit("admin.track_updated"); db.session.commit(); flash("Track updated.", "success")
     return _course_management_redirect(request.form.get("stage", "hard_skills"))
 
@@ -1298,7 +1324,10 @@ def settings():
         ("deadline_penalty_amount", "Deadline penalty amount (NGN)"),
         ("deadline_penalty_extension_days", "Penalty extension days (0 = original course duration)"),
         ("referral_program_enabled", "Referral program enabled"),
-        ("referral_share_percent", "Referral share percentage"),
+        ("normal_referral_share_percent", "Normal user referral share percentage"),
+        ("referral_share_percent", "Legacy referral share percentage"),
+        ("ambassador_referral_share_percent", "Ambassador program-purchase share percentage"),
+        ("sug_referral_share_percent", "SUG program-purchase share percentage"),
         ("referral_minimum_payout", "Minimum referral payout (NGN)"),
         ("contact_address", "Contact location/address"),
         ("contact_map_url", "Google Maps embed URL"),
@@ -1319,14 +1348,14 @@ def settings():
             value = request.form.get(key, "").strip()
             if key in {"maintenance_mode", "registration_enabled", "email_verification_required", "referral_program_enabled"}:
                 value = "1" if request.form.get(key) == "1" else "0"
-            if key == "referral_share_percent":
+            if key in {"referral_share_percent", "normal_referral_share_percent", "ambassador_referral_share_percent", "sug_referral_share_percent"}:
                 try:
                     amount = Decimal(value)
                     if amount < 0 or amount > 100:
                         raise InvalidOperation
                     value = str(amount.quantize(Decimal("0.01")))
                 except (InvalidOperation, ValueError):
-                    flash("Referral share must be between 0 and 100 percent.", "error")
+                    flash(f"{label} must be between 0 and 100 percent.", "error")
                     return redirect(url_for("admin.settings"))
             if key == "referral_minimum_payout":
                 try:
@@ -1411,12 +1440,15 @@ def referrals():
     rows = Referral.query.order_by(Referral.created_at.desc()).limit(200).all()
     referral_ids = [referral.id for referral in rows]
     events = ReferralEvent.query.filter(ReferralEvent.referral_id.in_(referral_ids)).order_by(ReferralEvent.created_at.desc()).all() if referral_ids else []
+    program_events = ProgramReferralEvent.query.filter(ProgramReferralEvent.referral_id.in_(referral_ids)).order_by(ProgramReferralEvent.created_at.desc()).all() if referral_ids else []
     events_by_referral = {referral_id: [] for referral_id in referral_ids}
     for event in events:
         events_by_referral[event.referral_id].append(event)
+    for event in program_events:
+        events_by_referral[event.referral_id].append(event)
     user_ids = {x.referrer_id for x in rows} | {event.referred_user_id for event in events if event.referred_user_id}
     users = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
-    return render_template("admin/referrals.html", referrals=rows, users=users, events_by_referral=events_by_referral, events=events)
+    return render_template("admin/referrals.html", referrals=rows, users=users, events_by_referral=events_by_referral, events=events + program_events, program_events=program_events)
 
 
 @admin_bp.route("/referral-payouts")
@@ -1455,15 +1487,210 @@ def create_referral_code():
     if not user:
         flash("Enter a valid username.", "error")
         return redirect(url_for("admin.referrals"))
-    code = re.sub(r"[^A-Z0-9._-]", "", request.form.get("code", "").upper())[:80] or f"MAWIZ-{user.username.upper()}"[:80]
+    referral_type = request.form.get("referral_type", "normal").strip().lower()
+    if referral_type not in {"normal", "ambassador", "sug"}:
+        flash("Choose Normal user, Ambassador or SUG as the referral type.", "error")
+        return redirect(url_for("admin.referrals"))
+    prefix = {"normal": "MAWIZ", "ambassador": "AMB", "sug": "SUG"}[referral_type]
+    code = re.sub(r"[^A-Z0-9._-]", "", request.form.get("code", "").upper())[:80] or f"{prefix}-{user.username.upper()}"[:80]
     if Referral.query.filter_by(code=code).first():
         flash("That referral code already exists.", "error")
         return redirect(url_for("admin.referrals"))
-    db.session.add(Referral(referrer_id=user.id, code=code, link_token=__import__("secrets").token_urlsafe(18), status="active"))
+    label = request.form.get("label", "").strip()[:180]
+    try:
+        share_raw = request.form.get("share_percent", "").strip()
+        if share_raw:
+            share_percent = Decimal(share_raw)
+        else:
+            setting_key = {"normal": "normal_referral_share_percent", "ambassador": "ambassador_referral_share_percent", "sug": "sug_referral_share_percent"}[referral_type]
+            fallback_key = "referral_share_percent" if referral_type == "normal" else setting_key
+            share_percent = Decimal(get_setting(setting_key, get_setting(fallback_key, "10")))
+        if not share_percent.is_finite() or share_percent < 0 or share_percent > 100:
+            raise InvalidOperation
+    except (InvalidOperation, TypeError, ValueError):
+        flash("Referral percentage must be between 0 and 100.", "error")
+        return redirect(url_for("admin.referrals"))
+    starts_raw = request.form.get("starts_at", "").strip()
+    ends_raw = request.form.get("ends_at", "").strip()
+    try:
+        starts_at = datetime.strptime(starts_raw, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc) if starts_raw else None
+        ends_at = datetime.strptime(ends_raw, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc) if ends_raw else None
+        if starts_at and ends_at and ends_at <= starts_at:
+            raise ValueError
+    except ValueError:
+        flash("Referral end date must be later than its start date.", "error")
+        return redirect(url_for("admin.referrals"))
+    db.session.add(Referral(referrer_id=user.id, code=code, label=label, referral_type=referral_type,
+        share_percent=share_percent, starts_at=starts_at, ends_at=ends_at,
+        link_token=__import__("secrets").token_urlsafe(18), status="active"))
+    if referral_type in {"sug", "ambassador"}:
+        permission_code = "referral.sug.view" if referral_type == "sug" else "referral.ambassador.view"
+        permission = Permission.query.filter_by(code=permission_code).first()
+        if permission:
+            override = UserPermission.query.filter_by(user_id=user.id, permission_id=permission.id).first()
+            if override:
+                override.allowed = True
+            else:
+                db.session.add(UserPermission(user_id=user.id, permission_id=permission.id, allowed=True))
     audit("admin.referral_code_created")
     db.session.commit()
-    flash("Referral code and link created.", "success")
+    flash("Referral code and link created with its own percentage share.", "success")
     return redirect(url_for("admin.referrals"))
+
+
+@admin_bp.route("/referrals/<int:referral_id>/manage", methods=["GET", "POST"])
+@permission_required("admin.dashboard.view", "admin")
+def manage_referral_code(referral_id):
+    referral = Referral.query.get_or_404(referral_id)
+    if request.method == "POST":
+        referral_type = request.form.get("referral_type", "normal").strip().lower()
+        status = request.form.get("status", "active").strip().lower()
+        if referral_type not in {"normal", "ambassador", "sug"} or status not in {"active", "paused", "pending", "completed", "revoked"}:
+            flash("Choose a valid referral type and status.", "error")
+            return redirect(url_for("admin.manage_referral_code", referral_id=referral.id))
+        try:
+            share_percent = Decimal(request.form.get("share_percent", "").strip())
+            if not share_percent.is_finite() or share_percent < 0 or share_percent > 100:
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            flash("Referral percentage must be between 0 and 100.", "error")
+            return redirect(url_for("admin.manage_referral_code", referral_id=referral.id))
+        starts_raw = request.form.get("starts_at", "").strip()
+        ends_raw = request.form.get("ends_at", "").strip()
+        try:
+            starts_at = datetime.strptime(starts_raw, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc) if starts_raw else None
+            ends_at = datetime.strptime(ends_raw, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc) if ends_raw else None
+            if starts_at and ends_at and ends_at <= starts_at:
+                raise ValueError
+        except ValueError:
+            flash("Referral end date must be later than its start date.", "error")
+            return redirect(url_for("admin.manage_referral_code", referral_id=referral.id))
+        referral.referral_type = referral_type
+        referral.share_percent = share_percent
+        referral.label = request.form.get("label", "").strip()[:180]
+        referral.status = status
+        referral.starts_at = starts_at
+        referral.ends_at = ends_at
+        audit("admin.referral_code_updated")
+        db.session.commit()
+        flash("Referral code settings updated. Previously recorded commissions remain unchanged.", "success")
+        return redirect(url_for("admin.referrals"))
+    user = User.query.get(referral.referrer_id)
+    return render_template("admin/referral_manage.html", referral=referral, referrer=user)
+
+
+@admin_bp.route("/growth-share-campaigns/beneficiary-search")
+@permission_required("admin.mgsc.manage", "admin")
+def growth_share_beneficiary_search():
+    """Autocomplete existing non-administrator accounts for MGSC beneficiary selection."""
+    term = (request.args.get("q") or "").strip()
+    if len(term) < 2:
+        return jsonify({"results": []})
+    pattern = f"%{term}%"
+    users = (User.query.filter(User.role != "admin")
+             .filter(or_(User.username.ilike(pattern), User.email.ilike(pattern)))
+             .order_by(User.username.asc()).limit(15).all())
+    results = []
+    for user in users:
+        full_name = _user_name(user)
+        display_name = full_name if full_name and full_name != user.email else user.username
+        results.append({
+            "username": user.username,
+            "role": user.role,
+            "display_name": display_name,
+            "email": user.email,
+            "phone": user.username if user.username and re.fullmatch(r"\+?[0-9][0-9\s().-]{5,}", user.username) else "",
+            "label": f"{user.username} — {user.role}" + (f" — {user.email}" if user.email else "") + (f" — {full_name}" if full_name and full_name != user.email else "")
+        })
+    return jsonify({"results": results})
+
+
+@admin_bp.route("/growth-share-campaigns", methods=["GET", "POST"])
+@permission_required("admin.mgsc.manage", "admin")
+def growth_share_campaigns():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()[:180]
+        beneficiary_identifier = request.form.get("beneficiary_username", "").strip()
+        beneficiary = None
+        if beneficiary_identifier:
+            beneficiary = (User.query.filter(User.role != "admin")
+                .filter(or_(func.lower(User.username) == beneficiary_identifier.lower(),
+                            func.lower(User.email) == beneficiary_identifier.lower()))
+                .first())
+        beneficiary_name = request.form.get("beneficiary_name", "").strip()[:180]
+        try:
+            starts_raw = request.form.get("starts_at", "").strip()
+            ends_raw = request.form.get("ends_at", "").strip()
+            if not starts_raw or not ends_raw:
+                raise ValueError("Enter both the campaign start and end date/time.")
+            starts_at = datetime.strptime(starts_raw, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
+            ends_at = datetime.strptime(ends_raw, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc)
+            if ends_at <= starts_at:
+                raise ValueError("The campaign end date/time must be later than the start date/time.")
+
+            min_signups = int(request.form.get("min_signups", ""))
+            max_signups = int(request.form.get("max_signups", ""))
+            min_purchases = int(request.form.get("min_program_purchases", ""))
+            max_purchases = int(request.form.get("max_program_purchases", ""))
+            share_percent = Decimal(request.form.get("share_percent", "").strip())
+
+            if min_signups < 1:
+                raise ValueError("Minimum signups must be at least 1.")
+            if max_signups < min_signups:
+                raise ValueError("Maximum signups must be greater than or equal to minimum signups.")
+            if min_purchases < 1:
+                raise ValueError("Minimum program purchases must be at least 1.")
+            if max_purchases < min_purchases:
+                raise ValueError("Maximum program purchases must be greater than or equal to minimum purchases.")
+            if share_percent <= 0 or share_percent > 100:
+                raise ValueError("Share percentage must be greater than 0 and no more than 100.")
+            if not name:
+                raise ValueError("Enter a campaign name.")
+            if not beneficiary_identifier or not beneficiary:
+                raise ValueError("Select an existing non-administrator account by username, email, or phone number (if stored as the username).")
+        except (ValueError, InvalidOperation) as exc:
+            flash(str(exc) or "Enter valid campaign settings.", "error")
+            return redirect(url_for("admin.growth_share_campaigns"))
+
+        campaign = MGSCampaign(name=name, beneficiary_user_id=beneficiary.id,
+            beneficiary_name=beneficiary_name or beneficiary.username,
+            starts_at=starts_at, ends_at=ends_at, min_signups=min_signups, max_signups=max_signups,
+            min_program_purchases=min_purchases, max_program_purchases=max_purchases,
+            share_percent=share_percent, revenue_basis="system_eligible_revenue", status="active")
+        db.session.add(campaign)
+        beneficiary_permission = Permission.query.filter_by(code="mgsc.beneficiary.view").first()
+        if beneficiary_permission:
+            override = UserPermission.query.filter_by(user_id=beneficiary.id, permission_id=beneficiary_permission.id).first()
+            if override:
+                override.allowed = True
+            else:
+                db.session.add(UserPermission(user_id=beneficiary.id, permission_id=beneficiary_permission.id, allowed=True))
+        audit("admin.mgsc_campaign_created")
+        db.session.commit()
+        flash("Growth Share Campaign created. Live eligibility tracking will begin within its configured date window.", "success")
+        return redirect(url_for("admin.growth_share_campaigns"))
+    campaigns = MGSCampaign.query.order_by(MGSCampaign.created_at.desc()).limit(200).all()
+    return render_template("admin/growth_share_campaigns.html", campaigns=campaigns)
+
+
+@admin_bp.post("/growth-share-campaigns/<int:campaign_id>/status")
+@permission_required("admin.mgsc.manage", "admin")
+def update_growth_share_campaign_status(campaign_id):
+    campaign = MGSCampaign.query.get_or_404(campaign_id)
+    action = request.form.get("action", "").strip().lower()
+    if action not in {"pause", "resume", "cancel"}:
+        flash("Choose a valid campaign action.", "error")
+        return redirect(url_for("admin.growth_share_campaigns"))
+    if action == "pause":
+        campaign.status = "paused"
+    elif action == "resume":
+        campaign.status = "active"
+    else:
+        campaign.status = "cancelled"
+    audit("admin.mgsc_campaign_" + action)
+    db.session.commit()
+    flash("Campaign status updated.", "success")
+    return redirect(url_for("admin.growth_share_campaigns"))
 
 
 @admin_bp.route("/coupons", methods=["GET", "POST"])

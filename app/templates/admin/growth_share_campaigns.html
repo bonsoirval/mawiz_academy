@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% block title %}Mawiz Growth Share Campaigns — Admin{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero"><div><span class="eyebrow">REVENUE PARTNERSHIPS</span><h1>Mawiz Growth Share Campaigns</h1><p>Configure temporary system-revenue shares gated by live signup and program-purchase counts.</p></div></div>
+  <section class="panel">
+    <h2>Create campaign</h2>
+    <form method="post" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Campaign name<input name="name" required maxlength="180" placeholder="e.g. Owerri Student Growth Campaign"></label>
+      <div class="grid2 mgsc-beneficiary-row">
+        <label>Beneficiary account username
+          <input id="mgsc-beneficiary-username" name="beneficiary_username" list="mgsc-beneficiary-options" placeholder="Username, email or phone number" autocomplete="off" required>
+          <datalist id="mgsc-beneficiary-options"></datalist>
+          <div id="mgsc-beneficiary-status" class="muted" aria-live="polite"></div>
+        </label>
+        <label>Beneficiary display name
+          <input id="mgsc-beneficiary-name" name="beneficiary_name" placeholder="Automatically filled from selected account" required>
+        </label>
+      </div>
+      <div class="grid2"><label>Start date/time (UTC)<input type="datetime-local" name="starts_at" required></label><label>End date/time (UTC)<input type="datetime-local" name="ends_at" required></label></div>
+      <h3>Qualifying signup count</h3>
+      <div class="grid2"><label>Minimum signups<input type="number" name="min_signups" min="1" value="50" required></label><label>Maximum signups<input type="number" name="max_signups" min="1" value="200" required></label></div>
+      <h3>Qualifying program-purchase count</h3>
+      <p class="muted">These thresholds count successful program purchase orders, not the amount of money spent.</p>
+      <div class="grid2"><label>Minimum program purchases<input type="number" name="min_program_purchases" min="1" value="20" required></label><label>Maximum program purchases<input type="number" name="max_program_purchases" min="1" value="100" required></label></div>
+      <label>Share percentage of eligible system revenue<input type="number" name="share_percent" min="0.01" max="100" step="0.01" value="5" required></label>
+      <button class="button" type="submit">Create campaign</button>
+    </form>
+  </section>
+  <section class="panel table-panel">
+    <h2>Campaigns</h2>
+    <table class="data-table"><thead><tr><th>Campaign / Beneficiary</th><th>Window (UTC)</th><th>Signups</th><th>Program purchases</th><th>Share</th><th>Eligibility</th><th>Estimated share</th></tr></thead><tbody>
+    {% for c in campaigns %}<tr><td><strong>{{ c.name }}</strong><small>{{ c.beneficiary_name }}</small></td><td>{{ c.starts_at.strftime('%Y-%m-%d %H:%M') }} – {{ c.ends_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ c.eligible_signup_count }} / {{ c.min_signups }}–{{ c.max_signups }}</td><td>{{ c.eligible_purchase_count }} / {{ c.min_program_purchases }}–{{ c.max_program_purchases }}</td><td>{{ c.share_percent }}%</td><td>{% if c.eligible_at %}<span class="status status-active">Eligible since {{ c.eligible_at.strftime('%Y-%m-%d %H:%M') }}</span>{% else %}<span class="status status-pending">Not yet eligible</span>{% endif %}</td><td>₦{{ '{:,.2f}'.format(c.estimated_share_amount or 0) }}<form method="post" action="{{ url_for('admin.update_growth_share_campaign_status', campaign_id=c.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if c.status == 'paused' %}<button class="button small" name="action" value="resume">Resume</button>{% elif c.status not in ('cancelled','completed') %}<button class="button small" name="action" value="pause">Pause</button><button class="button small danger" name="action" value="cancel">Cancel</button>{% else %}<small>{{ c.status|title }}</small>{% endif %}</form></td></tr>{% else %}<tr><td colspan="7" class="empty">No campaigns created yet.</td></tr>{% endfor %}
+    </tbody></table>
+  </section>
+</section>
+
+<script>
+(() => {
+  const input = document.getElementById("mgsc-beneficiary-username");
+  const nameInput = document.getElementById("mgsc-beneficiary-name");
+  const list = document.getElementById("mgsc-beneficiary-options");
+  const status = document.getElementById("mgsc-beneficiary-status");
+  if (!input || !nameInput || !list || !status) return;
+
+  let timer = null;
+  let lastResults = [];
+  let selectedUser = null;
+
+  function matchTypedValue(value) {
+    const needle = value.trim().toLowerCase();
+    return lastResults.find(user =>
+      [user.username, user.email, user.phone].filter(Boolean)
+        .some(item => item.toLowerCase() === needle)
+    ) || null;
+  }
+
+  function selectUser(user) {
+    selectedUser = user;
+    // Keep the identifier the admin selected; server resolves username/email/phone.
+    input.value = user.selected_value || user.username;
+    nameInput.value = user.display_name || user.username;
+    input.setCustomValidity("");
+    status.textContent = `Selected ${user.username} (${user.role}).`;
+  }
+
+  input.addEventListener("input", () => {
+    window.clearTimeout(timer);
+    const query = input.value.trim();
+    list.replaceChildren();
+    lastResults = [];
+    selectedUser = null;
+    input.setCustomValidity("");
+    if (nameInput.dataset.userSelected === "true") {
+      nameInput.value = "";
+      delete nameInput.dataset.userSelected;
+    }
+    if (query.length < 2) {
+      status.textContent = "";
+      return;
+    }
+    status.textContent = "Searching…";
+    timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("{{ url_for('admin.growth_share_beneficiary_search') }}?q=" + encodeURIComponent(query), {
+          headers: { "Accept": "application/json" }, credentials: "same-origin"
+        });
+        if (!response.ok) throw new Error("Search unavailable");
+        const data = await response.json();
+        lastResults = data.results || [];
+        for (const user of lastResults) {
+          const option = document.createElement("option");
+          // Identifier accepts username, email, or phone when the phone is the account username.
+          option.value = user.username;
+          option.label = user.label;
+          list.appendChild(option);
+        }
+        status.textContent = lastResults.length ? `${lastResults.length} account(s) found.` : "No matching non-administrator accounts found.";
+        const exact = matchTypedValue(query);
+        if (exact) {
+          selectUser(exact);
+          nameInput.dataset.userSelected = "true";
+        }
+      } catch (error) {
+        status.textContent = "Could not search accounts. Please try again.";
+      }
+    }, 220);
+  });
+
+  input.addEventListener("change", () => {
+    const chosen = matchTypedValue(input.value);
+    if (!chosen) {
+      selectedUser = null;
+      nameInput.value = "";
+      delete nameInput.dataset.userSelected;
+      input.setCustomValidity("Select an existing non-administrator account from the suggestions.");
+      status.textContent = "Select an existing account from the suggestions.";
+      return;
+    }
+    selectUser(chosen);
+    nameInput.dataset.userSelected = "true";
+  });
+
+  nameInput.addEventListener("input", () => {
+    // Permit an administrator to adjust the display label after selecting the account.
+    if (selectedUser) nameInput.dataset.userSelected = "true";
+  });
+})();
+</script>
+
+{% endblock %}

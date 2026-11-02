@@ -1,4 +1,5 @@
 """Authentication, account registration, verification, and password recovery routes."""
+from decimal import Decimal, InvalidOperation
 
 from datetime import datetime, timezone, timedelta
 import hashlib
@@ -174,11 +175,27 @@ def register():
         own_code = f"MAWIZ-{username.upper()}"[:80]
         while Referral.query.filter_by(code=own_code).first():
             own_code = f"MAWIZ-{username.upper()}-{secrets.token_hex(2).upper()}"[:80]
-        db.session.add(Referral(referrer_id=user.id, code=own_code, link_token=secrets.token_urlsafe(18), status="active"))
+        from app.common.settings import get_setting
+        try:
+            own_share = Decimal(get_setting("normal_referral_share_percent", get_setting("referral_share_percent", "10")))
+        except (InvalidOperation, TypeError, ValueError):
+            own_share = Decimal("10")
+        db.session.add(Referral(referrer_id=user.id, code=own_code, referral_type="normal", share_percent=own_share,
+            link_token=secrets.token_urlsafe(18), status="active"))
         referral_code = request.form.get("referral_code", "").strip().upper()[:80] or session.get("referral_code", "")
         coupon_code = request.form.get("coupon_code", "").strip().upper()[:64] or session.get("coupon_code", "")
         if referral_code:
             referral = Referral.query.filter_by(code=referral_code, status="active").first()
+            # Respect configured referral-code validity windows.
+            now_utc = datetime.now(timezone.utc)
+            if referral and referral.starts_at:
+                starts_at = referral.starts_at.replace(tzinfo=timezone.utc) if referral.starts_at.tzinfo is None else referral.starts_at
+                if now_utc < starts_at:
+                    referral = None
+            if referral and referral.ends_at:
+                ends_at = referral.ends_at.replace(tzinfo=timezone.utc) if referral.ends_at.tzinfo is None else referral.ends_at
+                if now_utc > ends_at:
+                    referral = None
             # Keep shared codes active so they can attribute more than one signup.
             if referral and referral.referrer_id != user.id:
                 db.session.add(ReferralEvent(
@@ -191,6 +208,12 @@ def register():
         if verification_required:
             subject, body = _email_content("verification", link=verify_link, email=user.email)
             _send_mail(subject, user.email, body)
+        # MGSC signup counters are recorded in the same transaction as account creation.
+        try:
+            from app.learning.routes import _mgsc_record_event
+            _mgsc_record_event("signup", user_id=user.id, occurred_at=user.created_at or datetime.now(timezone.utc))
+        except Exception:
+            current_app.logger.exception("MGSC signup event could not be recorded for user_id=%s", user.id)
         audit("account.registered")
         session.pop("referral_code", None)
         db.session.commit()

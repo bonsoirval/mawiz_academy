@@ -50,10 +50,7 @@
   </div>
   <p style="margin-top:18px"><a href="{{ url_for('main.programs') }}">Browse all programs →</a></p>
 </section>
-<section class="public-section">
-  <div class="section-heading"><span class="eyebrow">FEATURED COURSES</span><h2>Courses to build practical skills.</h2><a href="{{ url_for('main.programs') }}">Browse and search courses →</a></div>
-  <div class="program-grid">{% for course in courses %}<article class="program-card"><span class="tag">{{ course.career_goal or 'Course' }}</span><h3>{{ course.title }}</h3><p>{{ course.description|truncate(150) }}</p><a href="{{ url_for('main.program_detail', course_id=course.id) }}">View course →</a></article>{% else %}<article class="program-card"><h3>No courses to show yet</h3><p>Published courses will appear here.</p></article>{% endfor %}</div>
-</section>
+
 
 <section class="public-section simulation-banner">
   <div><span class="eyebrow">WORKPLACE SIMULATIONS</span><h2>Practice the moments that courses often leave out.</h2><p>Respond to managers, colleagues and clients. Handle unclear requirements, competing priorities, feedback, revisions and scope changes.</p></div>

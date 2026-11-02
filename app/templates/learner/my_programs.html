@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}My Programs — Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page learner-page">
+  <div class="admin-hero"><div><span class="eyebrow">YOUR LEARNING</span><h1>My Programs</h1><p>Manage your program access, course progress and completion deadlines.</p></div><a class="button" href="{{ url_for('main.programs') }}">Explore programs</a></div>
+  <div class="program-grid">
+    {% for item in programs %}
+      <article class="program-card">
+        <span class="tag">{{ 'COMPLETED' if item.total and item.completed == item.total else 'IN PROGRESS' }}</span>
+        <h2>{{ item.entitlement.track.title }}</h2>
+        <p>{{ item.entitlement.track.description }}</p>
+        <p>{{ item.completed }} of {{ item.total }} courses completed</p>
+        <div class="module-list">
+          {% for entry in item.courses %}
+            <article><span>{{ '%02d'|format(loop.index) }}</span><div><h3>{{ entry.course.title }}</h3>
+              {% if entry.enrollment %}<p>{{ entry.enrollment.progress or 0 }}% complete</p>
+                {% if entry.enrollment.deadline_at %}<small>Deadline: {{ entry.enrollment.deadline_at.strftime('%Y-%m-%d') }}</small>{% endif %}
+                <p><a href="{{ url_for('learning.course_detail', slug=entry.course.slug) }}">Continue course →</a></p>
+              {% else %}<p>Course enrolment is being prepared.</p>{% endif %}
+            </div></article>
+          {% endfor %}
+        </div>
+        <a class="button ghost" href="{{ url_for('main.program_page', track_id=item.entitlement.track.id) }}">View program</a>
+      </article>
+    {% else %}
+      <article class="program-card"><h2>You have not enrolled in a program yet.</h2><p>Choose a program to access its courses.</p><a class="button" href="{{ url_for('main.programs') }}">Browse programs</a></article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

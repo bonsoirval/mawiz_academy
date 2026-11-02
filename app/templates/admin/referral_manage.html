@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Manage referral code — Admin{% endblock %}
+{% block content %}
+<section class="page admin-page">
+  <div class="admin-hero"><div><span class="eyebrow">GROWTH / REFERRALS</span><h1>Manage referral code</h1><p>Change this referral code's own settings. Global default changes do not overwrite this code's percentage.</p></div></div>
+  <section class="panel">
+    <h2>{{ referral.code }}</h2>
+    <p><strong>Referral link:</strong> <a href="{{ url_for('main.referral_link', token=referral.link_token, _external=True) }}">{{ url_for('main.referral_link', token=referral.link_token, _external=True) }}</a></p>
+    <p><strong>Referrer:</strong> {{ referrer.username if referrer else 'Account unavailable' }}{% if referrer %} ({{ referrer.email }}){% endif %}</p>
+    <form method="post" class="settings-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="grid2">
+        <label>Referral type<select name="referral_type"><option value="normal" {% if referral.referral_type == 'normal' %}selected{% endif %}>Normal user</option><option value="ambassador" {% if referral.referral_type == 'ambassador' %}selected{% endif %}>Ambassador</option><option value="sug" {% if referral.referral_type == 'sug' %}selected{% endif %}>SUG</option></select></label>
+        <label>Individual referral percentage (%)<input type="number" name="share_percent" min="0" max="100" step="0.01" value="{{ '%.2f'|format(referral.share_percent or 0) }}" required></label>
+        <label>Display name / organisation<input name="label" maxlength="180" value="{{ referral.label or '' }}"></label>
+        <label>Status<select name="status">{% for status in ['active','paused','pending','completed','revoked'] %}<option value="{{ status }}" {% if referral.status == status %}selected{% endif %}>{{ status|capitalize }}</option>{% endfor %}</select></label>
+        <label>Valid from (optional)<input type="datetime-local" name="starts_at" value="{{ referral.starts_at.strftime('%Y-%m-%dT%H:%M') if referral.starts_at else '' }}"></label>
+        <label>Valid until (optional)<input type="datetime-local" name="ends_at" value="{{ referral.ends_at.strftime('%Y-%m-%dT%H:%M') if referral.ends_at else '' }}"></label>
+      </div>
+      <button class="button">Save referral settings</button>
+      <a class="button button-secondary" href="{{ url_for('admin.referrals') }}">Cancel</a>
+    </form>
+  </section>
+</section>
+{% endblock %}

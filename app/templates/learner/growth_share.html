@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Growth Share Campaigns — Mawiz Academy{% endblock %}
+{% block content %}
+<section class="page learner-page">
+  <span class="eyebrow">BENEFICIARY DASHBOARD</span><h1>My Growth Share Campaigns</h1>
+  <p class="lead">View the campaign rules assigned to you, your live eligibility counts and your estimated share of eligible Mawiz system revenue.</p>
+  <div class="program-grid">
+    {% for c in campaigns %}
+      <article class="program-card">
+        <span class="tag">{{ 'ELIGIBLE' if c.eligible_at else c.status|upper }}</span>
+        <h2>{{ c.name }}</h2><p>{{ c.beneficiary_name }}</p>
+        <p><strong>Campaign window:</strong> {{ c.starts_at.strftime('%Y-%m-%d %H:%M') }} – {{ c.ends_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+        <p><strong>Signups:</strong> {{ c.eligible_signup_count }} (required {{ c.min_signups }}–{{ c.max_signups }})</p>
+        <p><strong>Program purchases:</strong> {{ c.eligible_purchase_count }} (required {{ c.min_program_purchases }}–{{ c.max_program_purchases }})</p>
+        <p><strong>Share:</strong> {{ c.share_percent }}% of total eligible Mawiz system revenue during the campaign</p>
+        <p><strong>Estimated share:</strong> ₦{{ '{:,.2f}'.format(c.estimated_share_amount or 0) }}</p>
+        {% if c.eligible_at %}<small>Eligibility granted {{ c.eligible_at.strftime('%Y-%m-%d %H:%M') }} UTC.</small>{% else %}<small>Eligibility is granted automatically once both count ranges are met.</small>{% endif %}
+      </article>
+    {% else %}<article class="program-card"><h2>No campaigns assigned</h2><p>If you are participating in a Growth Share Campaign, contact the Mawiz administrator to confirm your beneficiary assignment.</p></article>{% endfor %}
+  </div>
+</section>
+{% endblock %}

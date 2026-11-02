@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app.common.security import current_user, permission_required, audit
 from app.extensions import db
-from app.models import AssessmentAttempt, AssessmentQuestion, AssessmentResponse, Course, Enrollment, LearnerSkill, PortfolioItem, Project, Simulation, Skill, User, Module, Lesson, Quiz, ProjectSubmission, SimulationAttempt, CareerPathContent
+from app.models import AssessmentAttempt, AssessmentQuestion, AssessmentResponse, Course, Track, ProgramEnrollment, MGSCampaign, Enrollment, LearnerSkill, PortfolioItem, Project, Simulation, Skill, User, Module, Lesson, Quiz, ProjectSubmission, SimulationAttempt, CareerPathContent
 
 learner_bp = Blueprint("learner", __name__, url_prefix="/learner")
 
@@ -48,9 +48,36 @@ def dashboard():
             projects=Project.query.filter_by(published=True).count(), simulations=Simulation.query.filter_by(published=True).count(),
         )
     enrollments = Enrollment.query.filter_by(user_id=user.id).all()
+    if user.role == "learner":
+        owned_program_ids = {row.track_id for row in ProgramEnrollment.query.filter_by(user_id=user.id, status="active").all()}
+        enrollments = [e for e in enrollments if (e.course and (({t.id for t in e.course.tracks} & owned_program_ids) or (not e.course.tracks)))]
     from app.simulations.routes import simulations_for_learner
     learner_simulations = simulations_for_learner(user)
     return render_template("learner/dashboard.html", enrollments=enrollments, projects=Project.query.filter_by(published=True).limit(3).all(), simulations=learner_simulations[:3], portfolio_count=PortfolioItem.query.filter_by(learner_id=user.id).count())
+
+
+@learner_bp.route("/programs")
+@permission_required("learning.catalog.view", "learner")
+def my_programs():
+    user = current_user()
+    rows = ProgramEnrollment.query.filter_by(user_id=user.id).order_by(ProgramEnrollment.purchased_at.desc()).all()
+    programs = []
+    for row in rows:
+        course_rows = []
+        for course in row.track.courses:
+            enrollment = Enrollment.query.filter_by(user_id=user.id, course_id=course.id).first()
+            course_rows.append({"course": course, "enrollment": enrollment})
+        completed = sum(1 for item in course_rows if item["enrollment"] and (item["enrollment"].progress or 0) >= 100)
+        programs.append({"entitlement": row, "courses": course_rows, "completed": completed, "total": len(course_rows)})
+    return render_template("learner/my_programs.html", programs=programs)
+
+
+@learner_bp.route("/growth-share")
+@permission_required("mgsc.beneficiary.view", "learner")
+def growth_share_dashboard():
+    user = current_user()
+    campaigns = MGSCampaign.query.filter_by(beneficiary_user_id=user.id).order_by(MGSCampaign.created_at.desc()).all()
+    return render_template("learner/growth_share.html", campaigns=campaigns)
 
 
 @learner_bp.route("/learning-path", methods=["GET", "POST"])
@@ -348,18 +375,19 @@ def assessment_result(attempt_id):
 def referrals():
     """Referral activity, commission earnings, and payout requests."""
     from decimal import Decimal, InvalidOperation
-    from app.models import Referral, ReferralEvent, ReferralPayout, User
+    from app.models import Referral, ReferralEvent, ProgramReferralEvent, ReferralPayout, User
     from app.common.settings import get_setting, get_bool
     user = current_user()
     codes = Referral.query.filter_by(referrer_id=user.id).order_by(Referral.created_at.desc()).all()
     referral_ids = [referral.id for referral in codes]
     events = ReferralEvent.query.filter(ReferralEvent.referral_id.in_(referral_ids)).order_by(ReferralEvent.created_at.desc()).all() if referral_ids else []
+    program_events = ProgramReferralEvent.query.filter(ProgramReferralEvent.referral_id.in_(referral_ids)).order_by(ProgramReferralEvent.created_at.desc()).all() if referral_ids else []
     events_by_referral = {referral_id: [] for referral_id in referral_ids}
-    for event in events:
+    for event in events + program_events:
         events_by_referral[event.referral_id].append(event)
     referred_ids = sorted({event.referred_user_id for event in events if event.referred_user_id})
     referred = {u.id: u for u in User.query.filter(User.id.in_(referred_ids)).all()} if referred_ids else {}
-    earned = sum((Decimal(str(e.commission_amount or 0)) for e in events if e.event_type == "purchase"), Decimal("0.00"))
+    earned = sum((Decimal(str(e.commission_amount or 0)) for e in events if e.event_type == "purchase"), Decimal("0.00")) + sum((Decimal(str(e.commission_amount or 0)) for e in program_events), Decimal("0.00"))
     payouts = ReferralPayout.query.filter_by(referrer_id=user.id).order_by(ReferralPayout.requested_at.desc()).all()
     committed = sum((Decimal(str(p.amount or 0)) for p in payouts if p.status in {"pending", "approved", "paid"}), Decimal("0.00"))
     available = max(Decimal("0.00"), earned - committed)
@@ -389,5 +417,5 @@ def referrals():
             flash("Payout request submitted for administrator review.", "success")
             return redirect(url_for("learner.referrals"))
     return render_template("learner/referrals.html", referrals=codes, referred=referred,
-        events_by_referral=events_by_referral, events=events, payouts=payouts, earned=earned,
+        events_by_referral=events_by_referral, events=events + program_events, payouts=payouts, earned=earned,
         available=available, minimum_payout=minimum, referral_program_enabled=get_bool("referral_program_enabled", True))

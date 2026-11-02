@@ -42,6 +42,7 @@
           <a class="sidebar-link {% if request.endpoint == 'admin.activity' %}active{% endif %}" href="{{ url_for('admin.activity') }}"><span>≡</span>Audit Activity</a>
           <a class="sidebar-link {% if request.endpoint == 'admin.system_logs' %}active{% endif %}" href="{{ url_for('admin.system_logs') }}"><span>▤</span>System Logs</a>
           <a class="sidebar-link {% if request.endpoint in ('admin.referrals','admin.create_referral_code') %}active{% endif %}" href="{{ url_for('admin.referrals') }}"><span>↗</span>Referrals</a>
+          <a class="sidebar-link {% if request.endpoint == 'admin.growth_share_campaigns' %}active{% endif %}" href="{{ url_for('admin.growth_share_campaigns') }}"><span>％</span>Growth Share Campaigns</a>
           <a class="sidebar-link {% if request.endpoint in ('admin.referral_payouts','admin.review_referral_payout') %}active{% endif %}" href="{{ url_for('admin.referral_payouts') }}"><span>₦</span>Referral Payouts</a>
           <a class="sidebar-link {% if request.endpoint in ('admin.coupons','admin.toggle_coupon') %}active{% endif %}" href="{{ url_for('admin.coupons') }}"><span>%</span>Coupons</a>
           <a class="sidebar-link {% if request.endpoint == 'admin.payments' %}active{% endif %}" href="{{ url_for('admin.payments') }}"><span>₦</span>Payments</a>
@@ -54,11 +55,13 @@
           <a class="sidebar-link {% if request.endpoint == 'learner.dashboard' %}active{% endif %}" href="{{ url_for('learner.dashboard') }}"><span>⌂</span>Dashboard</a>
           {% if current_user.role != 'instructor' and can('profile.manage') %}<a class="sidebar-link {% if request.endpoint == 'learner.onboarding' %}active{% endif %}" href="{{ url_for('learner.onboarding') }}"><span>◉</span>Profile</a>{% endif %}
           {% if current_user.role == 'learner' and can('profile.manage') %}<a class="sidebar-link {% if request.endpoint == 'learner.choose_learning_path' %}active{% endif %}" href="{{ url_for('learner.choose_learning_path') }}"><span>➜</span>Learning Path</a>{% endif %}
+          {% if current_user.role == 'learner' and can('learning.catalog.view') %}<a class="sidebar-link {% if request.endpoint == 'learner.my_programs' %}active{% endif %}" href="{{ url_for('learner.my_programs') }}"><span>▣</span>My Programs</a>{% endif %}
           {% if current_user.role != 'instructor' and can('learning.catalog.view') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('learning.') %}active{% endif %}" href="{{ url_for('learning.courses') }}"><span>▣</span>Courses</a>{% endif %}
           {% if current_user.role != 'instructor' and can('projects.view') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('projects.') %}active{% endif %}" href="{{ url_for('projects.index') }}"><span>◆</span>Projects</a>{% endif %}
           {% if current_user.role != 'instructor' and can('simulations.view') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('simulations.') %}active{% endif %}" href="{{ url_for('simulations.index') }}"><span>◇</span>Simulations</a>{% endif %}
           {% if current_user.role == 'learner' and can('portfolio.manage') %}<a class="sidebar-link {% if request.endpoint and request.endpoint.startswith('portfolio.') %}active{% endif %}" href="{{ url_for('portfolio.index') }}"><span>▤</span>Portfolio</a>{% endif %}
           {% if current_user.role == 'learner' and can('profile.manage') %}<a class="sidebar-link {% if request.endpoint == 'learner.referrals' %}active{% endif %}" href="{{ url_for('learner.referrals') }}"><span>↗</span>Referrals</a>{% endif %}
+          {% if current_user.role == 'learner' and can('mgsc.beneficiary.view') %}<a class="sidebar-link {% if request.endpoint == 'learner.growth_share_dashboard' %}active{% endif %}" href="{{ url_for('learner.growth_share_dashboard') }}"><span>％</span>Growth Share</a>{% endif %}
           {% if current_user.role == 'learner' and can('learning.catalog.view') %}<a class="sidebar-link {% if request.endpoint == 'learning.payment_history' %}active{% endif %}" href="{{ url_for('learning.payment_history') }}"><span>₦</span>Payment History</a>{% endif %}
           {% if current_user.role == 'instructor' and can('admin.courses.manage') %}
             <div class="sidebar-section-label">INSTRUCTOR</div>

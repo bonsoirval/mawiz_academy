@@ -20,7 +20,7 @@ def ensure_schema():
     The referral block converts the old single-conversion fields to the newer,
     auditable event history without deleting legacy data.
     """
-    from app.models import User, Referral, ReferralEvent
+    from app.models import User, Referral, ReferralEvent, Permission
     inspector = inspect(db.engine)
     tables = inspector.get_table_names()
     if 'user' in tables:
@@ -56,6 +56,21 @@ def ensure_schema():
         db.session.commit()
     if 'track' in tables:
         columns = {c['name'] for c in inspector.get_columns('track')}
+        track_price_added = 'price_amount' not in columns
+        if track_price_added:
+            db.session.execute(text('ALTER TABLE track ADD COLUMN price_amount NUMERIC(12, 2) NOT NULL DEFAULT 0'))
+        if 'price_currency' not in columns:
+            db.session.execute(text("ALTER TABLE track ADD COLUMN price_currency VARCHAR(3) NOT NULL DEFAULT 'NGN'"))
+        db.session.commit()
+        # One-time legacy migration: infer a starting program price from the sum of
+        # the old course prices assigned to each program. Admins can then set the
+        # intended program price explicitly; do not repeat this on later startups.
+        if track_price_added and 'track_course' in tables and 'course_price' in tables:
+            db.session.execute(text('''UPDATE track SET price_amount = COALESCE((
+                SELECT SUM(cp.amount) FROM track_course tc JOIN course_price cp ON cp.course_id = tc.course_id
+                WHERE tc.track_id = track.id
+            ), 0)'''))
+            db.session.commit()
         # Tracks created by earlier versions did not store publication state.
         if 'published' not in columns:
             db.session.execute(text('ALTER TABLE track ADD COLUMN published BOOLEAN NOT NULL DEFAULT FALSE'))
@@ -124,6 +139,13 @@ def ensure_schema():
         if 'marked_by_id' not in columns:
             db.session.execute(text('ALTER TABLE assignment_submission ADD COLUMN marked_by_id INTEGER REFERENCES "user"(id) ON DELETE SET NULL'))
         db.session.commit()
+    if 'program_payment' in tables:
+        columns = {c['name'] for c in inspector.get_columns('program_payment')}
+        if 'provider_fee_amount' not in columns:
+            db.session.execute(text('ALTER TABLE program_payment ADD COLUMN provider_fee_amount NUMERIC(12, 2) NOT NULL DEFAULT 0'))
+        if 'eligible_revenue_amount' not in columns:
+            db.session.execute(text('ALTER TABLE program_payment ADD COLUMN eligible_revenue_amount NUMERIC(12, 2) NOT NULL DEFAULT 0'))
+        db.session.commit()
     if 'referral_event' in tables:
         columns = {c['name'] for c in inspector.get_columns('referral_event')}
         if 'commission_amount' not in columns:
@@ -137,8 +159,42 @@ def ensure_schema():
             db.session.execute(text('ALTER TABLE referral ADD COLUMN clicks INTEGER DEFAULT 0'))
         if 'last_clicked_at' not in columns:
             db.session.execute(text('ALTER TABLE referral ADD COLUMN last_clicked_at TIMESTAMP'))
+        if 'referral_type' not in columns:
+            db.session.execute(text("ALTER TABLE referral ADD COLUMN referral_type VARCHAR(24) NOT NULL DEFAULT 'normal'"))
+        if 'share_percent' not in columns:
+            db.session.execute(text('ALTER TABLE referral ADD COLUMN share_percent NUMERIC(5, 2)'))
+        if 'label' not in columns:
+            db.session.execute(text("ALTER TABLE referral ADD COLUMN label VARCHAR(180) DEFAULT ''"))
+        if 'starts_at' not in columns:
+            db.session.execute(text('ALTER TABLE referral ADD COLUMN starts_at TIMESTAMP'))
+        if 'ends_at' not in columns:
+            db.session.execute(text('ALTER TABLE referral ADD COLUMN ends_at TIMESTAMP'))
+        # Existing auto-generated MAWIZ-username codes are ordinary user codes.
+        # Snapshot the configured share onto each existing code exactly once, so
+        # later changes to global settings never alter existing referral terms.
+        db.session.execute(text("UPDATE referral SET referral_type='normal' WHERE code LIKE 'MAWIZ-%' AND COALESCE(label, '') = '' AND referral_type='ambassador'"))
+        db.session.execute(text("""UPDATE referral SET share_percent = COALESCE((
+            SELECT CAST(value AS NUMERIC) FROM system_setting WHERE key = CASE
+                WHEN referral.referral_type = 'sug' THEN 'sug_referral_share_percent'
+                WHEN referral.referral_type = 'ambassador' THEN 'ambassador_referral_share_percent'
+                ELSE 'normal_referral_share_percent' END
+        ), CASE WHEN referral.referral_type = 'sug' THEN 10 WHEN referral.referral_type = 'ambassador' THEN 10 ELSE 10 END)
+        WHERE share_percent IS NULL"""))
+        db.session.execute(text('UPDATE referral SET share_percent = 10 WHERE share_percent IS NULL'))
         db.session.commit()
     db.create_all()
+    # Add permissions introduced by the program/referral/MGSC enhancement so
+    # existing production databases can assign them without running dev seeding.
+    new_permissions = {
+        "referral.ambassador.view": "View assigned ambassador referral activity",
+        "referral.sug.view": "View assigned SUG referral activity",
+        "mgsc.beneficiary.view": "View assigned Mawiz Growth Share Campaigns",
+        "admin.mgsc.manage": "Create and manage Mawiz Growth Share Campaigns",
+    }
+    for code, description in new_permissions.items():
+        if not Permission.query.filter_by(code=code).first():
+            db.session.add(Permission(code=code, description=description))
+    db.session.commit()
     # Seed the built-in public pages into the CMS as drafts so admins can edit
     # the existing page copy without unexpectedly replacing the live templates.
     from app.models import PageContent

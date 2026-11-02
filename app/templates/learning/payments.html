@@ -3,10 +3,10 @@
 {% block content %}
 <section class="page">
   <span class="eyebrow">ACCOUNT</span><h1>Payment history</h1>
-  <p class="lead">View your course payment attempts and their current verification status. Course access is enabled only after Paystack confirms a successful payment.</p>
+  <p class="lead">View your program payment attempts and their current verification status. Program access is enabled only after Paystack confirms a successful payment. Historical course payment records remain available for audit.</p>
   <section class="panel">
     <div class="table-wrap"><table class="data-table">
-      <thead><tr><th>Date</th><th>Course / purpose</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead>
+      <thead><tr><th>Date</th><th>Program / purpose</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead>
       <tbody>{% for payment in payments %}
         <tr><td>{{ payment.created_at.strftime('%d %b %Y %H:%M') if payment.created_at else '—' }}</td>
           <td>{{ payment.course.title if payment.course else 'Course unavailable' }}{% if payment.purpose == 'deadline_penalty' %}<small style="display:block">Deadline extension</small>{% endif %}</td>
@@ -14,7 +14,16 @@
           <td><code>{{ payment.reference }}</code></td>
           <td><span class="status status-{{ payment.status|replace('_','-') }}">{{ payment.status|replace('_',' ')|title }}</span>{% if payment.status != 'success' and payment.course %}<small style="display:block"><a href="{{ url_for('learning.course_detail', slug=payment.course.slug) }}">Return to course</a></small>{% endif %}</td>
         </tr>
-      {% else %}<tr><td colspan="5"><div class="empty">You do not have any payment records yet.</div></td></tr>{% endfor %}</tbody>
+      {% endfor %}
+      {% for payment in program_payments %}
+        <tr><td>{{ payment.created_at.strftime('%d %b %Y %H:%M') if payment.created_at else '—' }}</td>
+          <td>{{ payment.track.title if payment.track else 'Program unavailable' }}</td>
+          <td>{{ payment.currency }} {{ '{:,.2f}'.format(payment.amount) }}</td>
+          <td><code>{{ payment.reference }}</code></td>
+          <td><span class="status status-{{ payment.status|replace('_','-') }}">{{ payment.status|replace('_',' ')|title }}</span>{% if payment.status != 'success' and payment.track %}<small style="display:block"><a href="{{ url_for('main.program_page', track_id=payment.track.id) }}">Return to program</a></small>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      {% if not payments and not program_payments %}<tr><td colspan="5"><div class="empty">You do not have any payment records yet.</div></td></tr>{% endif %}</tbody>
     </table></div>
   </section>
 </section>

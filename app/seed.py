@@ -27,10 +27,14 @@ PERMISSIONS = {
     "admin.quizzes.publish": "Publish or unpublish quizzes",
     "learning.enrollment.create": "Enroll in a published course",
     "learning.quiz.take": "Take published quizzes",
+    "referral.ambassador.view": "View assigned ambassador referral activity",
+    "referral.sug.view": "View assigned SUG referral activity",
+    "mgsc.beneficiary.view": "View assigned Mawiz Growth Share Campaigns",
+    "admin.mgsc.manage": "Create and manage Mawiz Growth Share Campaigns",
 }
 
 ROLE_GRANTS = {
-    "learner": [k for k in PERMISSIONS if not k.startswith("admin.")],
+    "learner": [k for k in PERMISSIONS if not k.startswith("admin.") and k not in {"referral.ambassador.view", "referral.sug.view", "mgsc.beneficiary.view"}],
     "instructor": ["profile.manage", "learner.dashboard.view", "learning.catalog.view", "learning.course.view", "learning.lesson.view", "learning.enrollment.create", "learning.quiz.take", "projects.view", "simulations.view", "admin.courses.manage", "admin.courses.publish", "admin.quizzes.manage", "admin.quizzes.publish"],
     "mentor": ["profile.manage", "learner.dashboard.view", "learning.catalog.view", "learning.course.view", "learning.lesson.view", "projects.view", "simulations.view"],
     "admin": list(PERMISSIONS),

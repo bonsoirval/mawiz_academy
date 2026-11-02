@@ -258,3 +258,9 @@ The administrator/instructor learning-management workspace uses four horizontal 
 Each tab opens its management workspace in the full page content area. The tabs adapt to two columns on medium screens and one column on narrow screens. Existing permission checks and management actions remain in place.
 
 For security, the packaged source excludes local `.env` secrets, the local SQLite database, runtime logs, the Python virtual environment, and generated caches. Configure the application using `.env.example` and initialize the database using the documented setup steps.
+
+## Program purchases and access model
+
+Mawiz now treats a published Track as a purchasable **Program**. Administrators set the program price and assign courses to it; individual course checkout is retired for new enrolments. A verified Paystack program purchase creates a program entitlement and course enrolments, with each course deadline calculated from the program purchase timestamp using that course's configured duration. Learners use **My Programs** to view their program access and deadlines.
+
+Referral codes support separate Ambassador and SUG types. Administrators can configure time-limited Mawiz Growth Share Campaigns (MGSC) with minimum/maximum counts for beneficiary-attributed signups and successful program purchases. Eligibility is evaluated live; eligible shares are estimated from total eligible program revenue during the campaign window. MGSC estimates are not payout approvals. See `CHANGELOG_PROGRAMS_REFERRALS_MGSC.md` for implementation notes and remaining production checks.
