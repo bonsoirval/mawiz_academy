@@ -10,7 +10,10 @@ from flask import Flask, render_template, session, request, g
 from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import Config
 from .extensions import db, csrf, limiter
+from flask_migrate import Migrate
 
+# initialize Flask-Migrate
+migrate = Migrate()
 
 def _configure_logging(app):
     """Configure rotating application logs without duplicating handlers in tests/reloads."""
@@ -56,9 +59,18 @@ def create_app(config_class=Config):
     _configure_logging(app)
     db.init_app(app); csrf.init_app(app); limiter.init_app(app)
 
-    with app.app_context():
-        from .common.schema import ensure_schema
-        ensure_schema()
+    # Initialize Flask-Migrate
+    migrate.init_app(
+        app,
+        db,
+        compare_type = True,
+        compare_server_default = True
+    )
+
+    if app.config.get("AUTO_SCHEMA_COMPATIBILITY", False):
+        with app.app_context():
+            from .common.schema import ensure_schema
+            ensure_schema()
 
     from .auth.routes import auth_bp
     from .main.routes import main_bp

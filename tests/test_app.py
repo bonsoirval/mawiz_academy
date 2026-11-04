@@ -110,9 +110,9 @@ def test_first_learner_login_opens_course_selection_and_blocks_paid_enrollment(c
     catalog = client.get('/learning/courses?first_login=1')
     assert catalog.status_code == 200
     assert b'Choose your first course' in catalog.data
-    response = client.post(f'/learning/courses/{course_id}/enroll', follow_redirects=True)
-    assert response.status_code == 200
-    assert b'Continue to secure checkout' in response.data
+    response = client.post(f'/learning/courses/{course_id}/enroll')
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/programs')
     with client.application.app_context():
         assert Enrollment.query.filter_by(user_id=learner_id, course_id=course_id).first() is None
 
@@ -174,48 +174,28 @@ def test_profile_picture_upload_accepts_real_jpeg_signature(client, tmp_path):
         assert learner.profile.profile_picture.startswith("uploads/profile_pictures/user-")
         assert list((Path(tmp_path) / "uploads" / "profile_pictures").glob("*.jpg"))
 
-
-def test_paystack_checkout_creates_pending_payment_and_renders_redirect_bridge(client, monkeypatch):
+def test_legacy_course_checkout_redirects_to_programs(client):
     with client.application.app_context():
         learner = User.query.filter_by(email="learner@mawiz.local").first()
         course = Course.query.filter_by(published=True).first()
         assert learner and course
-        Enrollment.query.filter_by(user_id=learner.id).delete()
-        course.stage = "hard_skills"
-        if not course.price:
-            db.session.add(CoursePrice(course_id=course.id, amount=12500, currency="NGN"))
-        else:
-            course.price.amount = 12500
-            course.price.currency = "NGN"
-        db.session.commit()
         learner_id, course_id = learner.id, course.id
 
     with client.session_transaction() as sess:
         sess["user_id"] = learner_id
 
-    def fake_paystack(path, method="GET", payload=None):
-        assert path == "/transaction/initialize"
-        assert method == "POST"
-        assert payload["amount"] == 1250000
-        assert payload["currency"] == "NGN"
-        assert payload["email"] == "learner@mawiz.local"
-        assert payload["metadata"]["course_id"] == course_id
-        return {"authorization_url": "https://checkout.paystack.com/test-session"}
-
-    monkeypatch.setattr("app.learning.routes._paystack_request", fake_paystack)
     response = client.post(f"/learning/courses/{course_id}/checkout")
-    assert response.status_code == 200
-    assert b"Connecting to Paystack" in response.data
-    assert b"https://checkout.paystack.com/test-session" in response.data
-    assert b"Continue to secure checkout" in response.data
-    assert b"paystack-redirect.js" in response.data
-    with client.application.app_context():
-        payment = CoursePayment.query.filter_by(user_id=learner_id, course_id=course_id).first()
-        assert payment is not None
-        assert payment.status == "pending"
-        assert payment.amount == 12500
-        assert Enrollment.query.filter_by(user_id=learner_id, course_id=course_id).first() is None
 
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/programs")
+
+    with client.application.app_context():
+        payment = CoursePayment.query.filter_by(
+            user_id=learner_id,
+            course_id=course_id,
+            purpose="course_purchase",
+        ).first()
+        assert payment is None
 
 def test_admin_can_view_payment_management_page(client):
     with client.application.app_context():
@@ -226,7 +206,7 @@ def test_admin_can_view_payment_management_page(client):
         sess["user_id"] = admin_id
     response = client.get("/admin/payments")
     assert response.status_code == 200
-    assert b"Course payments" in response.data
+    assert b"Program payments" in response.data
 
 
 def test_learner_payment_history_is_scoped_to_signed_in_learner(client):

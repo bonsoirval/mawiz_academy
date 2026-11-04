@@ -146,8 +146,12 @@ class Track(db.Model):
     slug = db.Column(db.String(220), unique=True, nullable=False)
     description = db.Column(db.Text, default="")
     published = db.Column(db.Boolean, default=False, nullable=False)
-    price_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
-    price_currency = db.Column(db.String(3), nullable=False, default="NGN")
+    price_amount = db.Column(
+        db.Numeric(12, 2), nullable=False, default=0, server_default="0"
+    )
+    price_currency = db.Column(
+        db.String(3), nullable=False, default="NGN", server_default="NGN"
+    )
     courses = db.relationship("Course", secondary="track_course", back_populates="tracks", order_by="Course.title")
 
     @property
@@ -589,9 +593,16 @@ class Referral(db.Model):
     referrer_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
     referred_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
     code = db.Column(db.String(80), nullable=False, unique=True, index=True)
-    referral_type = db.Column(db.String(24), nullable=False, default="normal", index=True)
+    referral_type = db.Column(
+        db.String(24), nullable=False, default='normal',
+        server_default='normal', index=True
+    )
     share_percent = db.Column(db.Numeric(5, 2), nullable=False, default=10)
-    label = db.Column(db.String(180), default="")
+    label = db.Column(
+        db.String(180),
+        default="",
+        server_default=db.text("''")
+    )
     starts_at = db.Column(db.DateTime)
     ends_at = db.Column(db.DateTime)
     link_token = db.Column(db.String(96), nullable=False, unique=True, index=True)
@@ -620,7 +631,9 @@ class ReferralEvent(db.Model):
     course_id = db.Column(db.Integer, db.ForeignKey("course.id", ondelete="SET NULL"), nullable=True, index=True)
     payment_id = db.Column(db.Integer, db.ForeignKey("course_payment.id", ondelete="SET NULL"), nullable=True, unique=True)
     amount = db.Column(db.Numeric(12, 2), nullable=True)
-    commission_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    commission_amount = db.Column(
+        db.Numeric(12, 2), nullable=False, default=0, server_default='0'
+    )
     currency = db.Column(db.String(3), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     referral = db.relationship("Referral", backref=db.backref("events", cascade="all, delete-orphan"))
