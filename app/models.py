@@ -651,7 +651,7 @@ class ProgramReferralEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     referral_id = db.Column(db.Integer, db.ForeignKey("referral.id", ondelete="CASCADE"), nullable=False, index=True)
     referred_user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
-    program_payment_id = db.Column(db.Integer, db.ForeignKey("program_payment.id", ondelete="SET NULL"), nullable=False, unique=True, index=True)
+    program_payment_id = db.Column(db.Integer, db.ForeignKey("program_payment.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
     event_type = db.Column(db.String(32), nullable=False, default="program_purchase", index=True)
     amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     commission_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)

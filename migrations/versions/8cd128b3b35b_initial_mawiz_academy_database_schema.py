@@ -611,7 +611,7 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('referral_id', sa.Integer(), nullable=False),
     sa.Column('referred_user_id', sa.Integer(), nullable=True),
-    sa.Column('program_payment_id', sa.Integer(), nullable=False),
+    sa.Column('program_payment_id', sa.Integer(), nullable=True),
     sa.Column('event_type', sa.String(length=32), nullable=False),
     sa.Column('amount', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('commission_amount', sa.Numeric(precision=12, scale=2), nullable=False),
